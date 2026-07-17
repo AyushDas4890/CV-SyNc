@@ -1,0 +1,51 @@
+[
+  {
+    "title": "AI Carbon Footprint Predictor and RAG Sustainability Advisor",
+    "tech_stack": [
+      "Python",
+      "HTML",
+      "CSS",
+      "JavaScript",
+      "Shell",
+      "Dockerfile",
+      "Makefile",
+      "Procfile"
+    ],
+    "bullets": [
+      "Achieved 82.6% pairwise ranking accuracy for CO\u2082 estimates on a calibrated platform.",
+      "Delivered actionable insights with 89.7% calibrated coverage on 524 unseen products.",
+      "Implemented end-to-end predictions with an average latency of ~80 ms using advanced ML techniques."
+    ],
+    "repo_url": "https://github.com/AyushDas4890/Carbon_Footprint_Generator"
+  },
+  {
+    "title": "AI Research Assistant Pipeline",
+    "tech_stack": [
+      "Python",
+      "CSS",
+      "JavaScript",
+      "HTML"
+    ],
+    "bullets": [
+      "Developed a multi-agent LangGraph system with self-critique for advanced end-to-end research reporting.",
+      "Implemented dual-layer memory architecture using ChromaDB to enhance research context across sessions.",
+      "Created a live-streaming UI for real-time monitoring of agent activities and report generation."
+    ],
+    "repo_url": "https://github.com/AyushDas4890/AI-Research-Assistant-Pipeline"
+  },
+  {
+    "title": "AI-Powered Legal Conflict Resolver",
+    "tech_stack": [
+      "Python",
+      "JavaScript",
+      "CSS",
+      "Docker"
+    ],
+    "bullets": [
+      "Developed an AI system achieving >85% validation accuracy for detecting contradictions in legal documents.",
+      "Implemented a FastAPI backend integrating natural language inference with significant reduction in false positives.",
+      "Engineered a user-friendly interface using Next.js, enabling rapid document analysis in under 3 seconds."
+    ],
+    "repo_url": "https://github.com/AyushDas4890/Legal-Conflict-Resolver"
+  }
+]

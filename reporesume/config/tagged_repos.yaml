@@ -1,0 +1,10 @@
+# config/tagged_repos.yaml
+# Which repos go on the CV. Edit freely — notes are woven into bullets by the LLM.
+github_username: AyushDas4890
+repos:
+  - name: Carbon_Footprint_Generator
+    notes: "82.6% pairwise ranking accuracy, 0.82 Spearman correlation, 89.7% calibrated coverage on 524 unseen products; ~80 ms end-to-end prediction latency"
+  - name: AI-Research-Assistant-Pipeline
+    notes: "Five-agent LangGraph system (Planner, Searcher, Reader, Critic, Writer) with self-critique retry loop"
+  - name: Legal-Conflict-Resolver
+    notes: ">85% validation accuracy, ~15% fewer false positives vs zero-shot baseline"

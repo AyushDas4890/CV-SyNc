@@ -1,0 +1,7 @@
+requests
+python-dotenv
+PyYAML
+openai
+docxtpl
+python-docx
+pywin32; sys_platform == 'win32'

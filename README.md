@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/30131979/README.md)
 # RepoResume
 
 **Automated resume generation from your GitHub repositories.**

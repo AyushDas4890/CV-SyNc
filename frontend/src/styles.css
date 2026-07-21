@@ -185,7 +185,12 @@ button.ghost {
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  /* justify-content: center intentionally omitted: with flex-direction column +
+     overflow-y: auto, centering an overflowing flex container clips the start
+     of the content outside the scrollable range in all major browsers — the
+     top of the image (heading, name, contact info) becomes permanently
+     unreachable no matter how far you scroll. See MDN "Flexbox and
+     overflow" / the well-known "flexbox centering scroll clipping" bug. */
   max-height: 70vh;
   gap: 12px;
 }

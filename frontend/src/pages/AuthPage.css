@@ -1,3 +1,39 @@
+/* ── Email Form Tabs (Sign In / Create Account) ── */
+.auth-email-tabs {
+  display: flex;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-tab.active {
+  background: rgba(245, 158, 11, 0.12);
+  color: #F59E0B;
+}
+
+.auth-email-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
 /* ─────────────────────────────────────────────
    AuthPage.css  —  CV-Sync Sign-In Page
    Palette: Deep Navy #0A192F · Gold #F59E0B

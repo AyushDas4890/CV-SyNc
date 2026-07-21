@@ -59,7 +59,7 @@ function me(req, res) {
   if (!user) {
     return res.status(401).json({ ok: false, error: "not authenticated" });
   }
-  res.json({ ok: true, userId: user.id, githubUsername: user.githubUsername });
+  res.json({ ok: true, user: userStore.publicProfile(user) });
 }
 
 // POST /api/auth/logout

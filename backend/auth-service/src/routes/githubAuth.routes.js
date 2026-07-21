@@ -1,18 +1,24 @@
 const express = require("express");
-const controller = require("../controllers/githubAuth.controller");
+const githubController = require("../controllers/githubAuth.controller");
+const emailController = require("../controllers/emailAuth.controller");
 const requireSession = require("../middleware/requireSession");
 
 const router = express.Router();
 
-// GitHub OAuth IS the login now (Ayush: skip Google, GitHub-only auth for V1).
-// login/callback must NOT require a session — there isn't one yet, that's the point.
-router.get("/github", controller.login);
-router.get("/github/callback", controller.callback);
+// ── GitHub OAuth ──────────────────────────────────────────────
+// login/callback must NOT require a session — there isn't one yet
+router.get("/github", githubController.login);
+router.get("/github/callback", githubController.callback);
 
-router.get("/me", controller.me);
-router.post("/logout", controller.logout);
+// ── Email / Password ──────────────────────────────────────────
+router.post("/email/register", emailController.register);
+router.post("/email/login", emailController.login);
 
-// needs an existing session — set by the callback above
-router.get("/github/repos", requireSession, controller.listRepos);
+// ── Session ───────────────────────────────────────────────────
+router.get("/me", githubController.me);
+router.post("/logout", githubController.logout);
+
+// ── GitHub Repos (needs active session + GitHub token) ────────
+router.get("/github/repos", requireSession, githubController.listRepos);
 
 module.exports = router;

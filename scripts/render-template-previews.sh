@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s nullglob
 
 # Renders every page of each CV template's sample .tex as PNGs into
 # frontend/public/template-previews/, plus a manifest.json of page counts.
@@ -30,20 +31,22 @@ for entry in "${TEMPLATES[@]}"; do
   cp -r "$src_dir"/. "$job_dir"/
 
   echo "== $id ($engine) =="
-  (cd "$job_dir" && "$engine" -interaction=nonstopmode -halt-on-error "$main_tex" >/dev/null)
+  if ! (cd "$job_dir" && "$engine" -interaction=nonstopmode -halt-on-error "$main_tex" > "$job_dir/build.log" 2>&1); then
+    echo "ERROR compiling $id — last 40 lines of build.log:" >&2
+    tail -n 40 "$job_dir/build.log" >&2
+    exit 1
+  fi
 
   pdf_name="$(basename "$main_tex" .tex).pdf"
   pdftoppm -png -r 150 "$job_dir/$pdf_name" "$job_dir/page"
 
-  page_count=0
-  for f in "$job_dir"/page-*.png; do
-    page_count=$((page_count + 1))
-  done
+  mapfile -t pages < <(printf '%s\n' "$job_dir"/page-*.png | sort -V)
+  page_count=${#pages[@]}
   echo "$id: $page_count page(s)"
 
   # page-1.png -> <id>.png, page-2.png -> <id>-p2.png, ...
   n=1
-  for f in $(ls "$job_dir"/page-*.png | sort -V); do
+  for f in "${pages[@]}"; do
     if [ "$n" -eq 1 ]; then
       cp "$f" "$OUT_DIR/$id.png"
     else

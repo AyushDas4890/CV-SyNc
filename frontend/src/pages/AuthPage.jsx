@@ -87,6 +87,9 @@ export default function AuthPage() {
         </ul>
       </div>
 
+      {/* Vertical separator */}
+      <div className="auth-panel-divider" />
+
       {/* Right — Sign-in Panel */}
       <div className="auth-right">
         <div className="auth-card">

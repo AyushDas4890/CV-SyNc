@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
 /* ── Email Form Tabs (Sign In / Create Account) ── */
 .auth-email-tabs {
   display: flex;
@@ -38,8 +40,6 @@
    AuthPage.css  —  CV-Sync Sign-In Page
    Palette: Deep Navy #0A192F · Gold #F59E0B
    ───────────────────────────────────────────── */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
 /* ── Root Layout ─────────────────────────────── */
 .auth-root {

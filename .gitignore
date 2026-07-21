@@ -1,3 +1,21 @@
-myvenv/
+# Environment variables & secrets
 .env
-**/__pycache__/
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.log
+
+# OS & IDE metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Temporary / Zip archives
+*.zip

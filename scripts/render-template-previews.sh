@@ -17,7 +17,16 @@ mkdir -p "$OUT_DIR"
 # id:engine:main.tex (relative to cv-templates/<id>/)
 TEMPLATES=(
   "jake:pdflatex:main.tex"
+  "dphang:pdflatex:resume.tex"
+  "anubhav:pdflatex:main.tex"
+  "altacv:pdflatex:sample.tex"
+  "moderncv:pdflatex:template.tex"
+  "plushcv:xelatex:PlushCV.tex"
+  "deedy:xelatex:deedy_resume-openfont.tex"
+  "awesome-cv:xelatex:resume.tex"
 )
+
+MANIFEST_ENTRIES=()
 
 for entry in "${TEMPLATES[@]}"; do
   id="${entry%%:*}"
@@ -43,6 +52,7 @@ for entry in "${TEMPLATES[@]}"; do
   mapfile -t pages < <(printf '%s\n' "$job_dir"/page-*.png | sort -V)
   page_count=${#pages[@]}
   echo "$id: $page_count page(s)"
+  MANIFEST_ENTRIES+=("  \"$id\": $page_count")
 
   # page-1.png -> <id>.png, page-2.png -> <id>-p2.png, ...
   n=1
@@ -55,3 +65,12 @@ for entry in "${TEMPLATES[@]}"; do
     n=$((n + 1))
   done
 done
+
+{
+  echo "{"
+  ( IFS=$'\n'; echo "${MANIFEST_ENTRIES[*]}" | sed '$!s/$/,/' )
+  echo "}"
+} > "$OUT_DIR/manifest.json"
+
+echo "Wrote $OUT_DIR/manifest.json"
+cat "$OUT_DIR/manifest.json"

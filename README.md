@@ -1,92 +1,136 @@
-# CV-Sync 🚀
+<div align="center">
 
-**Automated LaTeX Resume Synchronization from GitHub Repositories**
+<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=0:0A192F,100:F59E0B&height=220&section=header&text=CV-Sync&fontSize=70&fontColor=ffffff&fontAlignY=38&desc=GitHub%20repos%20%E2%86%92%20AI%20bullets%20%E2%86%92%20compiled%20PDF&descAlignY=58&descSize=20&animation=fadeIn" alt="CV-Sync banner" />
 
-CV-Sync automatically keeps the *Projects & Work Experience* sections of your resume seamlessly synchronized with your active GitHub repositories. It fetches repository metadata, leverages AI to distill clean, metric-driven action bullets, injects them into standard LaTeX resume templates (e.g., Jake Gutierrez template), and compiles pixel-perfect PDF resumes with human-in-the-loop approval.
+<img src="https://readme-typing-svg.demolab.com/?font=Fira+Code&weight=600&size=20&pause=1000&color=F59E0B&center=true&vCenter=true&width=780&lines=Tag+a+repo+%E2%86%92+AI+drafts+the+bullet;You+approve+the+diff+%E2%86%92+PDF+drops+out;The+LLM+never+touches+raw+LaTeX.+Ever." alt="Typing SVG" />
+
+![status](https://img.shields.io/badge/status-active--development-orange?style=for-the-badge)
+![stack](https://img.shields.io/badge/stack-Node%20%2F%20Express%20%2F%20React-0A192F?style=for-the-badge)
+![cv-format](https://img.shields.io/badge/CV%20format-LaTeX-F59E0B?style=for-the-badge)
+![license](https://img.shields.io/badge/license-unlicensed-lightgrey?style=for-the-badge)
+
+</div>
 
 ---
 
-## 🎨 Visual System & Design Philosophy
+## 🧠 The idea, in one breath
 
-Built with a **Deep Sapphire Blue `#0A192F` & Warm Gold `#F59E0B`** premium aesthetic, CV-Sync brings state-of-the-art visual polish and responsive user experience across both web interfaces and generated LaTeX artifacts.
-
----
-
-## 🏗 System Architecture
-
-CV-Sync is structured as a decoupled microservices architecture designed for reliability, strict type safety, and deterministic rendering.
+Your GitHub history is a better résumé writer than you are at 11pm the night before an application deadline. CV-Sync watches the repos you tag, pulls their README + language + topic metadata, asks an LLM to turn that into sharp, metric-aware bullet points, and — critically — **never lets the LLM anywhere near your actual LaTeX**. A deterministic renderer owns the `.tex`. The LLM only ever speaks JSON. You get a diff. You approve or reject it. Then it compiles to a real PDF.
 
 ```
-┌─────────────────┐       ┌───────────────────────┐       ┌──────────────────────┐
-│  React / Vite   │ ────> │ Auth Service          │ ────> │ Fetch & LLM Engine   │
-│  Frontend App   │       │ (Express + GitHub OAuth)│      │ (GitHub API + RAG)   │
-└─────────────────┘       └───────────────────────┘       └──────────┬───────────┘
-                                                                     │
-                                                                     ▼ `projects.json` (Contract)
-┌─────────────────┐       ┌───────────────────────┐       ┌──────────────────────┐
-│ PDF Output      │ <──── │ Compiler Service      │ <──── │ Writer Service       │
-│ (Download/Diff) │       │ (LaTeX Engine + Tectonic)│      │ (LaTeX Injector + Diff)│
-└─────────────────┘       └───────────────────────┘       └──────────────────────┘
+   you                    CV-Sync                              you again
+    │                        │                                     │
+    │  tag repos             │                                     │
+    ├───────────────────────▶│                                     │
+    │                        │  fetch README + metadata (GitHub)   │
+    │                        │  LLM → strict JSON bullets           │
+    │                        │  splice into LaTeX template          │
+    │                        │  compile → PDF or 422 errors         │
+    │                        │◀─────────────── diff shown ──────────┤
+    │  approve / reject      │                                     │
+    ├───────────────────────▶│                                     │
+    │                        │  compile final PDF                   │
+    │◀───────── PDF ─────────┤                                     │
 ```
 
----
-
-## 🛠 Key Features
-
-* **Deterministic LaTeX Pipeline**: Never relies on LLMs to write raw LaTeX code. The LLM produces strict JSON, while a deterministic renderer safely injects contents into master `.tex` templates.
-* **Human-in-the-Loop Diff Approval Gate**: Inspect side-by-side colorized diffs of your resume changes before compiling the final PDF artifact.
-* **GitHub OAuth & Repository Tagging**: Authenticate via GitHub and selectively select which repositories and performance metrics (`notes`) belong on your resume.
-* **Microservices Ready**: Decoupled Express.js backend services and React (Vite) frontend designed to run via Docker Compose.
+No image-based templates sneaking in unrendered LaTeX. No LLM hallucinating a `\begin{itemize}`. Just JSON in, PDF out, human veto power in the middle.
 
 ---
 
-## 📦 Project Structure
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
+
+## 🧩 Architecture — four services, one contract
+
+CV-Sync is deliberately **not** a monolith. Each half of the pipeline can be built, tested, and broken independently — which matters a lot when one half is being built by a teammate on the other side of a repo boundary.
+
+```
+┌──────────────┐   session cookie    ┌─────────────────────────────────────┐
+│   Browser    │────────────────────▶│           Auth Service              │
+│  (React/Vite)│                     │  GitHub OAuth + email/password       │
+└──────┬───────┘                     │  Session (Redis) + MySQL users       │
+       │                             └───────────────────┬───────────────────┘
+       │ pick repos                                       │ guards every API
+       ▼                                                   ▼
+┌─────────────────────┐   projects.json    ┌─────────────────────────────────┐
+│  Fetch + LLM Engine  │───────────────────▶│         Writer Service          │
+│  GitHub API + RAG    │   (the contract)   │  splice → diff gate → compile   │
+└─────────────────────┘                     └───────────────┬─────────────────┘
+                                                              │ POST /api/compile
+                                                              ▼
+                                             ┌─────────────────────────────────┐
+                                             │       Compiler Service          │
+                                             │  latexmk in a texlive sandbox   │
+                                             │  (built by teammate — done ✅)  │
+                                             └───────────────┬─────────────────┘
+                                                              │
+                                                     PDF ◀────┘  or 422 + line-numbered errors
+```
+
+**The one rule that governs everything:** the LLM outputs JSON, never LaTeX. A deterministic renderer is the only thing allowed to write `.tex`. If the compiler throws a 422, it goes back to the renderer/developer — never back into the LLM's context. This is what keeps a resume from ever containing a hallucinated command injection into your own PDF.
+
+---
+
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
+
+## 🚦 Where things actually stand
+
+| Piece | Status | Notes |
+|---|---|---|
+| 🔐 **Auth service** | ✅ Done (ahead of schedule) | GitHub OAuth (primary) + email/password (bcrypt) both live. Google OAuth code exists but is intentionally unmounted — "coming soon" |
+| 🖨️ **Compiler service** | ✅ Done | Built by teammate [Abhinav](https://github.com/IamAbhinav01) — `CV_BUILDER`, Overleaf-style tex-in/PDF-out, sandboxed `latexmk` in a texlive Docker image |
+| 🎨 **CV templates** | ✅ Done | 8 real, compile-tested LaTeX templates, multi-page preview rendering + page-count badges in the picker UI |
+| ✍️ **Writer service** | 🚧 Next up | Splice `projects.json` into a Jake-Gutierrez-style template between `% PROJECTS_START/END` markers, diff-gate, forward to compiler |
+| 🔎 **Fetch + LLM (RAG)** | 📐 Designed, not built | GitHub metadata fetch → OpenAI summarization → retrieval-augmented bullet generation |
+
+---
+
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
+
+## 🗂️ What's actually in this repo
 
 ```
 CV SYNC/
 ├── backend/
-│   └── auth-service/           # Express.js GitHub OAuth & Session Manager
+│   └── auth-service/            Session auth: GitHub OAuth + email/password, Redis sessions
 │       ├── src/
-│       │   ├── controllers/    # GitHub Auth logic
-│       │   ├── middleware/     # Session validation
-│       │   ├── routes/         # OAuth endpoints (/auth/github, /auth/user)
-│       │   └── services/       # User store & token management
-│       ├── .env.example
-│       └── package.json
-├── frontend/                   # Modern React + Vite Web Application
-│   ├── src/
-│   │   ├── components/         # Reusable UI components & Logout bar
-│   │   ├── pages/              # Auth, GitHub Connect, Experience, Templates
-│   │   ├── api.js              # Centralized Axios client
-│   │   └── styles.css          # Blue & Gold design system tokens
-│   ├── index.html
-│   └── package.json
-├── kb/                         # Project Architecture Knowledge Base
-│   ├── 00-project.md           # Project state & team ownership
-│   ├── 01-architecture.md      # Microservice communication flow
-│   ├── 02-auth-service.md      # Auth Service specs
-│   ├── 03-compiler-service.md  # LaTeX compilation specs
-│   ├── 04-writer-service.md    # Resume Writer specs
-│   ├── 05-llm-rag.md           # LLM RAG & bullet generation design
-│   ├── 06-build-plan.md        # Engineering roadmap & milestones
-│   └── INDEX.md
-└── .gitignore                  # Global repository ignores (Secrets, Build artifacts)
+│       │   ├── controllers/     githubAuth.controller.js, googleAuth.controller.js (unmounted)
+│       │   ├── routes/          /api/auth/github, /email/login, /email/register, /me, /logout
+│       │   └── services/        userStore.service.js — in-memory, keyed on github_id | google_id | email
+│       └── .env                 GitHub OAuth App credentials
+│
+├── frontend/                    Vite + React onboarding flow
+│   └── src/pages/
+│       ├── AuthPage.jsx         GitHub button (primary) · Google (disabled) · email/pw form
+│       ├── ExperiencePage.jsx
+│       ├── GithubReposPage.jsx  repo picker
+│       └── TemplatePage.jsx     8-template grid, multi-page preview modal, page-count badges
+│
+├── cv-templates/                8 real LaTeX CV templates, pulled from AyushDas4890/CV_TEMPLATES
+│   ├── jake/ dphang/ anubhav/   compile with plain pdflatex
+│   ├── altacv/ moderncv/        pdflatex + CTAN lato/roboto fonts
+│   └── plushcv/ deedy/          xelatex (fontspec-based), bundled fonts
+│   └── awesome-cv/
+│
+├── scripts/
+│   └── render-template-previews.sh   compiles all 8 templates, rasterizes every page,
+│                                       writes manifest.json (id → page count)
+│
+├── kb/                          Compressed knowledge base — architecture, decisions, build plan
+│   ├── 00-project.md … 07-decisions.md
+│   └── ui-reference/            static onboarding mockup (superseded, reference only)
+│
+└── docs/superpowers/
+    ├── specs/                   design docs (spec-first, before any code)
+    └── plans/                   bite-sized implementation plans
 ```
 
 ---
 
-## ⚙️ Service Specifications & API Contracts
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
 
-### 1. Auth Service (`backend/auth-service`)
-Runs on port `3001` (by default) and manages GitHub OAuth flows.
+## 🔒 The contracts that hold it together
 
-* `GET /auth/github`: Initiates GitHub OAuth authentication flow.
-* `GET /auth/github/callback`: Handles GitHub authorization code exchange.
-* `GET /auth/user`: Returns current authenticated session.
-* `POST /auth/logout`: Clears session cookie.
-
-### 2. The Data Contract (`projects.json`)
-The immutable contract passed between the Fetch/LLM engine and the Writer Service:
+**`projects.json`** — the handoff between the LLM half and the rendering half. This shape is the load-bearing wall of the whole system:
 
 ```json
 [
@@ -94,8 +138,8 @@ The immutable contract passed between the Fetch/LLM engine and the Writer Servic
     "title": "Legal Clause Conflict Resolver",
     "tech_stack": ["Python", "DeBERTa-v3", "FAISS", "FastAPI"],
     "bullets": [
-      "Fine-tuned DeBERTa-v3-large on NLI dataset achieving >87% validation accuracy.",
-      "Optimized vector search pipeline using FAISS to reduce query latency by 45%."
+      "Fine-tuned DeBERTa-v3-large on an NLI dataset, reaching 87%+ validation accuracy.",
+      "Cut vector-search query latency 45% by optimizing the FAISS retrieval pipeline."
     ],
     "repo_url": "https://github.com/AyushDas4890/Legal-Conflict-Resolver",
     "dates": "Jan 2026 – Present"
@@ -103,47 +147,115 @@ The immutable contract passed between the Fetch/LLM engine and the Writer Servic
 ]
 ```
 
-### 3. Compiler Service API Contract
-Compiler service accepts raw LaTeX string payloads and converts them to binary PDF or structured error logs:
+**Compiler API** (`POST /api/compile`) — the boundary between "text" and "PDF":
 
-* `POST /api/compile`
-  * **Payload**: `{ "tex": "..." }`
-  * **Response 200**: Binary `application/pdf` stream
-  * **Response 422**: `{ "ok": false, "log": "...", "errors": [{ "file": "...", "line": 42, "message": "..." }] }`
+| Response | Meaning |
+|---|---|
+| `200` | Binary `application/pdf` — it compiled |
+| `422` | `{ ok: false, log, errors: [{file, line, message}] }` — LaTeX error, max 10 reported |
+| `400` | `tex` field missing from request |
+| `413` | `tex` over 2,000,000 characters |
+
+Sandboxed via `latexmk -pdf -interaction=nonstopmode -halt-on-error -no-shell-escape`, `openin_any=p openout_any=p` (paranoid file access), hard 15s timeout, job directory nuked after every run — win or lose.
 
 ---
 
-## 🚀 Quickstart & Local Setup
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
 
-### Prerequisites
-* **Node.js**: v18.x or higher
-* **npm**: v9.x or higher
-* **GitHub OAuth App**: Registered in GitHub Developer Settings (Callback: `http://localhost:3001/auth/github/callback`)
+## 🧬 The RAG design (fetch + LLM half)
 
-### 1. Backend Auth Service
+Retrieval, not fine-tuning. Four corpora, stuffed and retrieved differently:
+
+| Corpus | What it is | How it's used |
+|---|---|---|
+| **A.** Template macro cheatsheet | ~40 lines, the 4 LaTeX constructs the renderer understands | Always prompt-stuffed, no retrieval |
+| **B.** ATS rules | Keyword hygiene, no tables/images, correct section names | Always prompt-stuffed |
+| **C.** Bullet exemplars | 100+ tagged (ML / backend / frontend / devops), growing | Embedded (`text-embedding-3-small`), top-5 retrieved per repo |
+| **D.** Target job description | User-pasted, optional | Chunked, tech-overlap retrieval, keyword extraction |
+
+`[A + B] + [retrieved C exemplars + D keywords] + [repo data + your notes] → strict JSON out.` No vector DB yet — a JSON file of precomputed embeddings and cosine similarity is enough until corpus C grows into the thousands.
+
+---
+
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
+
+## 🔐 How auth actually works
+
+Session-based, not JWT — a deliberate, locked decision. The cookie holds **only** an opaque `session_id`; everything else lives server-side in Redis.
+
+```
+signup/login → argon2id / bcrypt verify → Redis session (TTL) → Set-Cookie (last step, always)
+protected route → cookie → session_id → Redis lookup → 200 or 401
+logout → DELETE Redis session (not just the cookie) → clear cookie
+```
+
+GitHub OAuth is the **primary, recommended** login path — not a bolt-on. Email/password (bcrypt, 12 rounds) works as a full alternative. Google OAuth is implemented but its routes are deliberately left unmounted (`"coming soon"` in the UI) — finding it disconnected in the code is a feature, not a bug.
+
+No user enumeration: a login attempt against a non-existent email still runs a dummy argon2 verification and returns the exact same generic 401 as a wrong password, in the same rough time window.
+
+---
+
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
+
+## ⚡ Running it locally
+
+**Prerequisites:** Node 18+, Redis, a registered GitHub OAuth App (callback URL must match `.env` exactly).
+
 ```bash
+# 1. Auth service
 cd backend/auth-service
-cp .env.example .env
-# Fill in GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, and SESSION_SECRET in .env
 npm install
-npm run dev
-```
+npm run dev              # → "auth-service listening on :4000"
+# needs Redis reachable locally — no Redis means session routes 503
+# (that's the coded fallback working, not a crash)
 
-### 2. Frontend Development Server
-```bash
+# 2. Frontend
 cd frontend
-cp .env.example .env
 npm install
-npm run dev
+npm run dev               # → http://localhost:5173
 ```
 
+**Regenerating template previews** (after touching anything in `cv-templates/`):
+
+```bash
+./scripts/render-template-previews.sh
+# compiles all 8 templates, rasterizes every page @150dpi,
+# writes frontend/public/template-previews/{id}.png, {id}-p2.png, ...
+# + manifest.json mapping id → page count
+```
+
+Requires `pdflatex`, `xelatex`, and `pdftoppm` (poppler-utils) on `PATH`.
+
 ---
 
-## 🛡️ Security Guidelines
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
 
-* `.env` files, build output (`dist/`), and `node_modules/` are strictly excluded from version control via root `.gitignore`.
-* Secrets and API tokens must never be committed to repository history.
+## 🎯 Design principles worth knowing before you touch this code
+
+- **The LLM never writes LaTeX.** Ever. It writes JSON; a deterministic renderer owns every `\` in the output.
+- **There is always a diff gate.** No AI-authored change lands in your CV without a human seeing the diff first. Reject leaves everything untouched, and reject is the default.
+- **Compile errors are a renderer bug, not an LLM problem.** A 422 from the compiler routes back to the code, never back into an LLM prompt.
+- **Session auth, not JWT.** Revocation should mean something. Logout destroys the Redis session, not just the cookie.
+- **Static, pre-rendered previews over live rendering.** Template previews are compiled once and committed as PNGs — no LaTeX toolchain needed at runtime just to show a picker grid.
 
 ---
 
-*Crafted for peak developer impact & resume synchronization.* ⚡
+<img width="100%" src="https://capsule-render.vercel.app/api?type=rect&color=0:0A192F,100:1a2942&height=3" />
+
+## 🙋 Open questions (ask before assuming)
+
+- Images vs. ATS-safe text-only CVs — genuinely unresolved, might end up as two template tracks.
+- Writer service: Node (assumed) or Python? Same repo, or its own?
+- What happens the instant after a user clicks a template in the picker — no backend call exists yet; it's local React state until the writer service exists to receive it.
+
+---
+
+<div align="center">
+
+*Built by [Ayush](mailto:das.ayush4890@gmail.com) · compiler service by [Abhinav](https://github.com/IamAbhinav01)*
+
+**No LLM was allowed to write LaTeX in the making of this project.** 🙂
+
+<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=0:0A192F,100:F59E0B&height=120&section=footer" />
+
+</div>

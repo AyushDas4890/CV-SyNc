@@ -96,7 +96,7 @@ export default function TemplatePage() {
               <h2>{previewing.name}</h2>
               <button className="modal-close" onClick={() => setPreviewing(null)}>×</button>
             </div>
-            <div className="modal-body modal-body-scroll">
+            <div className="modal-body">
               {Array.from({ length: pageCountFor(previewing.id) }, (_, i) => i + 1).map((page) => (
                 <img
                   key={page}

@@ -96,8 +96,19 @@ export default function TemplatePage() {
               <h2>{previewing.name}</h2>
               <button className="modal-close" onClick={() => setPreviewing(null)}>×</button>
             </div>
-            <div className="modal-body">
-              <img src={`/template-previews/${previewing.id}.png`} alt={previewing.name} />
+            <div className="modal-body modal-body-scroll">
+              {Array.from({ length: pageCountFor(previewing.id) }, (_, i) => i + 1).map((page) => (
+                <img
+                  key={page}
+                  src={
+                    page === 1
+                      ? `/template-previews/${previewing.id}.png`
+                      : `/template-previews/${previewing.id}-p${page}.png`
+                  }
+                  alt={`${previewing.name} page ${page}`}
+                  className="modal-page-image"
+                />
+              ))}
             </div>
             <div className="modal-footer">
               <button className="secondary" onClick={() => setPreviewing(null)}>Cancel</button>

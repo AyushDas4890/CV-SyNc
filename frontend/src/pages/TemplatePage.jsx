@@ -22,6 +22,7 @@ export default function TemplatePage() {
   const [previewing, setPreviewing] = useState(null); // template shown in modal, or null
   const [chosen, setChosen] = useState(null); // confirmed selection
   const [username, setUsername] = useState("");
+  const [pageCounts, setPageCounts] = useState({}); // { [templateId]: number }
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,8 +30,19 @@ export default function TemplatePage() {
     api.me()
       .then((res) => setUsername(res.githubUsername))
       .catch(() => navigate("/auth"));
+
+    // Static asset, not an authenticated call — plain fetch, not api.js.
+    // Failure just means every template falls back to page-count 1 (today's behavior).
+    fetch("/template-previews/manifest.json")
+      .then((res) => (res.ok ? res.json() : {}))
+      .then(setPageCounts)
+      .catch(() => setPageCounts({}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function pageCountFor(id) {
+    return pageCounts[id] || 1;
+  }
 
   function confirmSelection() {
     setChosen(previewing.id);
@@ -59,6 +71,9 @@ export default function TemplatePage() {
             onClick={() => setPreviewing(t)}
           >
             {chosen === t.id && <span className="chosen-badge">Selected</span>}
+            {pageCountFor(t.id) > 1 && (
+              <span className="page-count-badge">{pageCountFor(t.id)}p</span>
+            )}
             <div className="thumb">
               <img src={`/template-previews/${t.id}.png`} alt={t.name} />
             </div>

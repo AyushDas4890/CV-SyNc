@@ -52,6 +52,10 @@ for entry in "${TEMPLATES[@]}"; do
   mapfile -t pages < <(printf '%s\n' "$job_dir"/page-*.png | sort -V)
   page_count=${#pages[@]}
   echo "$id: $page_count page(s)"
+  if [ "$page_count" -eq 0 ]; then
+    echo "ERROR: $id produced 0 pages — pdftoppm found no output" >&2
+    exit 1
+  fi
   MANIFEST_ENTRIES+=("  \"$id\": $page_count")
 
   # page-1.png -> <id>.png, page-2.png -> <id>-p2.png, ...
@@ -71,6 +75,11 @@ done
   ( IFS=$'\n'; echo "${MANIFEST_ENTRIES[*]}" | sed '$!s/$/,/' )
   echo "}"
 } > "$OUT_DIR/manifest.json"
+
+if ! python3 -m json.tool "$OUT_DIR/manifest.json" >/dev/null 2>&1; then
+  echo "ERROR: manifest.json is not valid JSON" >&2
+  exit 1
+fi
 
 echo "Wrote $OUT_DIR/manifest.json"
 cat "$OUT_DIR/manifest.json"

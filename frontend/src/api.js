@@ -57,4 +57,16 @@ export const api = {
       body: JSON.stringify({ email, password, displayName }),
     });
   },
+
+  // ── Student Profile ──────────────────────────────
+  saveProfile(data) {
+    return request("/api/profile", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getProfile() {
+    return request("/api/profile");
+  },
 };

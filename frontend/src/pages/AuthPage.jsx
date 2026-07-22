@@ -30,8 +30,8 @@ export default function AuthPage() {
       } else {
         await api.emailLogin(email, password);
       }
-      // Session cookie set by backend — navigate to app
-      window.location.href = "/";
+      // Session cookie set by backend — navigate to profile onboarding step
+      window.location.href = "/onboarding/profile";
     } catch (err) {
       setEmailError(err.message || "Something went wrong. Please try again.");
     } finally {

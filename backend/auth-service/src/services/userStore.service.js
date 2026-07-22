@@ -118,6 +118,31 @@ function publicProfile(user) {
   return safe;
 }
 
+// ── Profile & Education ────────────────────────────────────────
+/**
+ * Saves a student's profile and education data against their user record.
+ * @param {string} userId
+ * @param {{ profile: object, education: object[] }} data
+ */
+function saveProfile(userId, data) {
+  const user = usersById.get(userId);
+  if (!user) throw new Error("USER_NOT_FOUND");
+  user.studentProfile = {
+    ...(user.studentProfile || {}),
+    ...data,
+    updatedAt: new Date().toISOString(),
+  };
+  return user.studentProfile;
+}
+
+/**
+ * Returns the saved student profile for a user, or null if none yet.
+ */
+function getProfile(userId) {
+  const user = usersById.get(userId);
+  return user?.studentProfile || null;
+}
+
 module.exports = {
   findOrCreateByGithubId,
   findOrCreateByGoogleId,
@@ -126,4 +151,6 @@ module.exports = {
   getById,
   getGithubToken,
   publicProfile,
+  saveProfile,
+  getProfile,
 };

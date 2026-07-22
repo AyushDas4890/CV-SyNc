@@ -1,20 +1,49 @@
-# Auth service (designed, not coded)
+# Auth service (DONE — 2026-07-22)
 
-Session-based. MySQL users + Redis sessions. Excalidraw: session-auth-corrected.excalidraw.
+Session-based. In-memory `userStore.service.js` for now (TODO: MySQL `users` table). MemoryStore sessions in dev (no Redis needed to run locally — falls back automatically). Redis optional via `USE_REDIS=true`.
 
-Flow:
-- entry: client → reverse proxy → rate limiter (token bucket) → routes
-- /signup: validate → argon2id hash → store user → create Redis session (TTL) → Set-Cookie LAST
-- /signin: lookup email → found: argon2.verify(pw, hash) → session → cookie. NOT found: DUMMY argon2 verify anyway → generic 401. Same timing + same error both fail paths = no user enumeration
-- /protected: cookie → session_id → Redis lookup (exists + not expired) → controller → service → DB. Else 401
-- /logout: DELETE Redis session (critical, not only cookie) + clear cookie (Max-Age=0)
+## Routes (all mounted under /api/auth, /api/profile)
 
-Rules:
-- cookie holds ONLY opaque random session_id. HttpOnly, Secure, SameSite=Lax. Never email/password/role in cookie
-- all session data server-side in Redis keyed by session_id
+| Method | Path | Description |
+|---|---|---|
+| GET | /api/auth/github | GitHub OAuth redirect |
+| GET | /api/auth/github/callback | Exchange code → session, redirect to /onboarding/profile |
+| GET | /api/auth/me | Returns public profile of logged-in user |
+| POST | /api/auth/logout | Destroys session + clears cookie |
+| GET | /api/auth/github/repos | Lists GitHub repos for logged-in user |
+| POST | /api/auth/email/register | bcryptjs (12 rounds) hash, 201 + session |
+| POST | /api/auth/email/login | Verify hash, session |
+| POST | /api/profile | Save studentProfile (profile + education) to user object |
+| GET | /api/profile | Return saved studentProfile or null |
 
-Schema users: id INT PK AI, email VARCHAR UNIQUE, password_hash VARCHAR (argon2id), role ENUM(admin,user), created_at TIMESTAMP.
+## userStore.service.js
+- In-memory Maps: `usersById`, `byGithubId`, `byGoogleId`, `byEmail`
+- Functions: `findOrCreateByGithubId`, `findOrCreateByGoogleId`, `createEmailUser`, `verifyEmailUser`, `getById`, `getGithubToken`, `publicProfile` (strips secrets), `saveProfile`, `getProfile`
+- `user.studentProfile` = `{ profile: {fullName, phone, email, githubUrl, linkedinUrl}, education: [{institution, degree, fieldOfStudy, dates, gpa}], updatedAt }`
 
-GitHub identity SEPARATE from auth identity: nullable github_token + github_username cols (or github_accounts table), filled by later "Connect GitHub" OAuth (public_repo scope). V1 no OAuth: user paste repo links, server use own PAT from .env.
+## Session rules
+- Cookie: opaque session_id only. HttpOnly, Secure (prod), SameSite=Lax
+- `session.regenerate()` called on login (session fixation prevention)
+- Logout: `session.destroy()` + cookie cleared
+- 24h maxAge cookie
 
-Build order (risk-first): E2E spike (signup→cookie→protected, ~100 lines) BEFORE middlewares. Pass checks in 06-build-plan.
+## Auth surface
+- GitHub OAuth = primary (recommended). Redirects to /onboarding/profile on success.
+- Email/password = secondary. bcryptjs, 12 rounds. Register → 201 + session. Login → session.
+- Google OAuth = code present (googleAuth.controller.js + googleAuth.service.js) but NOT mounted in router. Intentionally inert — frontend shows \"coming soon\".
+
+## Profile+Education storage (2026-07-22)
+- POST /api/profile: saves `{ profile, education }` onto `user.studentProfile` in userStore
+- GET /api/profile: returns `user.studentProfile` or null
+- Frontend ProfilePage.jsx: on mount calls GET /api/profile to pre-fill form; on Continue calls POST /api/profile to persist, also mirrors to localStorage under `cv_sync_student_profile`
+
+## Files
+- `src/server.js` — mounts /api/auth + /api/profile, session setup, dev /login shortcut
+- `src/routes/githubAuth.routes.js` — all /api/auth routes
+- `src/routes/profile.routes.js` — GET/POST /api/profile
+- `src/controllers/githubAuth.controller.js` — login, callback, me, logout, repos
+- `src/controllers/emailAuth.controller.js` — register, login
+- `src/controllers/profile.controller.js` — save, get
+- `src/services/githubAuth.service.js` — state gen, authorizeUrl, token exchange, fetch user
+- `src/services/userStore.service.js` — unified in-memory user store + profile store
+- `src/config/env.js` — env var validation, all config exported from one place

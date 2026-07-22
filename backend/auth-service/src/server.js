@@ -3,6 +3,7 @@ const session = require("express-session");
 const cors = require("cors");
 const config = require("./config/env");
 const githubAuthRoutes = require("./routes/githubAuth.routes");
+const profileRoutes    = require("./routes/profile.routes");
 
 const app = express();
 app.use(express.json());
@@ -73,7 +74,8 @@ async function startServer() {
     });
   }
 
-  app.use("/api/auth", githubAuthRoutes);
+  app.use("/api/auth",    githubAuthRoutes);
+  app.use("/api/profile", profileRoutes);
 
   const server = app.listen(config.port, () => {
     console.log(`auth-service listening on :${config.port}`);

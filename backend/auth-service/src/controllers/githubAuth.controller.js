@@ -40,9 +40,9 @@ async function callback(req, res) {
         return res.redirect(`${config.frontendUrl}/auth?error=session`);
       }
       req.session.userId = user.id;
-      // land on Experience next, not the repo picker — GitHub login already
-      // happened, so /onboarding/github below is now just the repo picker
-      res.redirect(`${config.frontendUrl}/onboarding/experience?login=1`);
+      // land on Profile next, not the repo picker — GitHub login already
+      // happened, so /onboarding/github is further downstream
+      res.redirect(`${config.frontendUrl}/onboarding/profile?login=1`);
     });
   } catch (err) {
     console.error("[github oauth callback]", err.message);

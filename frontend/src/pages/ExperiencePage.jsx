@@ -39,18 +39,23 @@ export default function ExperiencePage() {
             <span>Account</span>
           </div>
           <div className="step-connector" />
+          <div className="step-item done">
+            <div className="step-dot">✓</div>
+            <span>Profile</span>
+          </div>
+          <div className="step-connector" />
           <div className="step-item active">
-            <div className="step-dot">2</div>
+            <div className="step-dot">3</div>
             <span>Experience</span>
           </div>
           <div className="step-connector" />
           <div className="step-item">
-            <div className="step-dot">3</div>
+            <div className="step-dot">4</div>
             <span>GitHub</span>
           </div>
           <div className="step-connector" />
           <div className="step-item">
-            <div className="step-dot">4</div>
+            <div className="step-dot">5</div>
             <span>Template</span>
           </div>
         </div>

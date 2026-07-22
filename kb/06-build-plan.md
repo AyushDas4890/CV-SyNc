@@ -24,10 +24,18 @@ Rule: riskiest piece first — A1 proves template feasibility, 9a proves auth in
 GitHub OAuth is the primary/recommended login. REVISED again 2026-07-21: auth is now unified — GitHub OAuth + email/password both fully working, Google OAuth code present but unmounted ("coming soon"). This supersedes 9a-e above for auth — see 07-decisions.
 
 - `backend/auth-service/`: routes — GET /api/auth/github (login, redirects to GitHub), GET /api/auth/github/callback (creates/finds user by github_id, session.regenerate on login), GET /api/auth/me, POST /api/auth/logout, GET /api/auth/github/repos (requireSession-guarded), POST /api/auth/email/register, POST /api/auth/email/login. CORS+credentials configured. `userStore.service.js` is a unified in-memory store (github_id / google_id / email, bcryptjs for passwords) — TODO MySQL. Google routes exist (`googleAuth.controller.js`) but not mounted in the router — inert by design.
-- `frontend/`: Vite+React, 4 pages (auth, experience, github-repos, template-picker) styled off kb/ui-reference. AuthPage = GitHub button (primary, "Recommended" badge) + Google button (disabled/"coming soon") + Email/Password login-or-register form (`api.emailLogin`/`api.emailRegister`). Experience + Template pages both guard on `/api/auth/me`, bounce to /auth if not logged in, and show a `LogoutBar` (username + logout button → POST /api/auth/logout → redirect /auth). Login redirect flow: AuthPage → github.com consent (or email form) → lands on /onboarding/experience → /onboarding/github (repo picker, no connect button) → /onboarding/templates.
-- `frontend/src/pages/TemplatePage.jsx`: real 8-template grid (jake, dphang, anubhav, altacv, moderncv, plushcv, deedy, awesome-cv) reading thumbnails from `frontend/public/template-previews/<id>.png`. Click a thumbnail → modal shows the same PNG full-size + "Select this template" → sets local `chosen` state only, no backend call (see OPEN in 07-decisions).
-- Verified end-to-end against a real (locally-built) Redis + Node server: full session lifecycle, CORS preflight/headers, 503-not-hang fallback when Redis is down, userStore identity dedup on re-login. NOT verified: the actual GitHub consent screen + callback token exchange, or the email/password flow through a real browser — needs you to run it locally.
-- To run together: auth-service needs Redis running locally + a real GitHub OAuth App (client id/secret + callback URL registered on github.com must match .env exactly). `cd backend/auth-service && npm install && npm run dev`. `cd frontend && npm install && npm run dev`.
+- `frontend/`: Vite+React, 5 pages (auth, profile, experience, github-repos, template-picker) styled off kb/ui-reference. AuthPage = GitHub button (primary, "Recommended" badge) + Google button (disabled/"coming soon") + Email/Password login-or-register form. After auth → /onboarding/profile. Experience + Template pages both guard on `/api/auth/me`, bounce to /auth if not logged in, and show a `LogoutBar` (username + logout button → POST /api/auth/logout → redirect /auth).
+- `frontend/src/pages/TemplatePage.jsx`: real 8-template grid reading thumbnails from `frontend/public/template-previews/<id>.png`. Click → modal → "Select this template" → sets local `chosen` state only (no backend call yet).
+- Verified end-to-end: full session lifecycle, CORS, 503-not-hang fallback when Redis down.
+
+## Profile + Education onboarding step (2026-07-22 — DONE)
+- New page `frontend/src/pages/ProfilePage.jsx` at route `/onboarding/profile`
+- Fields: Full Name, Phone, Email, GitHub URL, LinkedIn URL, + dynamic Education repeater (Institution, Degree, Field of Study, Dates, CGPA/Percentage/GPA)
+- On Continue: POST /api/profile → saves to user.studentProfile in userStore. Also mirrors to localStorage (`cv_sync_student_profile`). On mount: GET /api/profile → pre-fills form.
+- Backend: `profile.controller.js`, `profile.routes.js`, `saveProfile`/`getProfile` in userStore. Mounted at /api/profile in server.js.
+- Step indicator updated across all 5 pages: Account → Profile → Experience → GitHub → Template.
+- OAuth callback now redirects to /onboarding/profile (was /onboarding/experience).
+- To run: both servers already running dev mode. Frontend: http://localhost:5173. Backend: http://localhost:4000.
 
 ## CV templates (`cv-templates/`, done 2026-07-21)
 - 8 templates pulled from `AyushDas4890/CV_TEMPLATES` (cv-formats/), each verified by actually compiling (xelatex where fontspec is used — deedy, plushcv; pdflatex otherwise). Missing CTAN packages (lato, fontawesome5/4, roboto, sourcesans, biblatex) fetched and installed into TEXMFHOME without root — see kb history for exact package fixes.
@@ -37,11 +45,9 @@ GitHub OAuth is the primary/recommended login. REVISED again 2026-07-21: auth is
 - NOT wired into backend anywhere — no service reads `cv-templates/` yet. Template selection on the frontend is currently decorative/local-state only (writer-service doesn't exist yet to consume it).
 - PENDING: push cleaned `cv-templates/` folder to `AyushDas4890/CV_TEMPLATES` repo, and push CV-SyNc repo changes — both blocked on git credentials not available in the sandbox; must be run by Ayush locally (`git push`).
 
-## Local run status (Ayush's machine, 2026-07-21)
+## Local run status (Ayush's machine, 2026-07-22)
 - GitHub OAuth App registered, .env filled in — done.
-- Backend runs locally: `npm run dev` → "auth-service listening on :4000" confirmed.
-- BLOCKED: Redis not running locally yet → backend logs "[redis] connection failed", session routes 503 (this is the coded fallback working as designed, not a crash).
-- Tried `docker run -d -p 6379:6379 redis` → failed: DNS resolution error pulling the image (`getaddrinfo` failure reaching production.cloudfront.docker.com). Possibly Cloudflare One Client (VPN/network tool, installed on this machine) interfering with DNS, or a transient network issue. Not yet resolved.
-- Fallback not yet tried: WSL is installed on this machine — install Redis natively inside a WSL distro instead of fighting Docker networking (`sudo apt install redis-server`, more reliable than Docker Desktop's registry pull on this network).
-- Once Redis is up: restart backend (`npm run dev`) — it only connects to Redis once at boot, no retry loop, so it must be restarted after Redis becomes available, not just left running.
-- Frontend not started yet this session — do after Redis+backend are confirmed working (`cd frontend && npm run dev`, opens on :5173).
+- Both servers running: backend on :4000, frontend on :5173.
+- MemoryStore in use (no Redis required in dev — sessions stored in process memory, lost on restart).
+- Redis optional: set USE_REDIS=true in .env, start Redis, restart backend.
+- Full onboarding flow verified: /auth → /onboarding/profile → /onboarding/experience → /onboarding/github → /onboarding/templates.

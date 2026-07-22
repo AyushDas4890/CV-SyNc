@@ -91,15 +91,17 @@ export default function TemplatePage() {
       <div className="page-content">
         {/* Step indicator */}
         <div className="step-indicator">
-          {["Account","Experience","GitHub"].map((label) => (
-            <><div className="step-item done" key={label}>
-              <div className="step-dot">✓</div>
-              <span>{label}</span>
+          {["Account", "Profile", "Experience", "GitHub"].map((label) => (
+            <div key={label} style={{ display: "flex", alignItems: "center" }}>
+              <div className="step-item done">
+                <div className="step-dot">✓</div>
+                <span>{label}</span>
+              </div>
+              <div className="step-connector" />
             </div>
-            <div className="step-connector" /></>
           ))}
           <div className="step-item active">
-            <div className="step-dot">4</div>
+            <div className="step-dot">5</div>
             <span>Template</span>
           </div>
         </div>

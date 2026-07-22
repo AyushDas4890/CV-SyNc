@@ -19,7 +19,7 @@ Session-based. In-memory `userStore.service.js` for now (TODO: MySQL `users` tab
 ## userStore.service.js
 - In-memory Maps: `usersById`, `byGithubId`, `byGoogleId`, `byEmail`
 - Functions: `findOrCreateByGithubId`, `findOrCreateByGoogleId`, `createEmailUser`, `verifyEmailUser`, `getById`, `getGithubToken`, `publicProfile` (strips secrets), `saveProfile`, `getProfile`
-- `user.studentProfile` = `{ profile: {fullName, phone, email, githubUrl, linkedinUrl}, education: [{institution, degree, fieldOfStudy, dates, gpa}], updatedAt }`
+- `user.studentProfile` = `{ profile: {fullName, phone, email, githubUrl, linkedinUrl}, education: [{institution, degree, fieldOfStudy, dates, gpa}], achievements: [{title, description, date}], certificates: [{name, issuer, date, link}], updatedAt }`
 
 ## Session rules
 - Cookie: opaque session_id only. HttpOnly, Secure (prod), SameSite=Lax

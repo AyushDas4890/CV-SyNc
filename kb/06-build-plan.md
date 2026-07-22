@@ -30,7 +30,7 @@ GitHub OAuth is the primary/recommended login. REVISED again 2026-07-21: auth is
 
 ## Profile + Education onboarding step (2026-07-22 — DONE)
 - New page `frontend/src/pages/ProfilePage.jsx` at route `/onboarding/profile`
-- Fields: Full Name, Phone, Email, GitHub URL, LinkedIn URL, + dynamic Education repeater (Institution, Degree, Field of Study, Dates, CGPA/Percentage/GPA)
+- Fields: Full Name, Phone, Email, GitHub URL, LinkedIn URL, dynamic Education list (Institution, Degree, Major, Dates, CGPA/Percentage/GPA), dynamic Achievements list (Title, Date, Description), dynamic Certifications list (Name, Issuer, Date, Verification Link)
 - On Continue: POST /api/profile → saves to user.studentProfile in userStore. Also mirrors to localStorage (`cv_sync_student_profile`). On mount: GET /api/profile → pre-fills form.
 - Backend: `profile.controller.js`, `profile.routes.js`, `saveProfile`/`getProfile` in userStore. Mounted at /api/profile in server.js.
 - Step indicator updated across all 5 pages: Account → Profile → Experience → GitHub → Template.

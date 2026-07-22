@@ -18,6 +18,14 @@ export default function ProfilePage() {
     { institution: "", degree: "", fieldOfStudy: "", dates: "", gpa: "" },
   ]);
 
+  const [achievementsList, setAchievementsList] = useState([
+    { title: "", description: "", date: "" },
+  ]);
+
+  const [certificatesList, setCertificatesList] = useState([
+    { name: "", issuer: "", date: "", link: "" },
+  ]);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,12 +45,18 @@ export default function ProfilePage() {
     api.getProfile()
       .then((res) => {
         if (res.studentProfile) {
-          const { profile: savedProfile, education: savedEducation } = res.studentProfile;
+          const { profile: savedProfile, education: savedEducation, achievements: savedAchievements, certificates: savedCertificates } = res.studentProfile;
           if (savedProfile) {
             setProfile((prev) => ({ ...prev, ...savedProfile }));
           }
           if (savedEducation && savedEducation.length > 0) {
             setEducationList(savedEducation);
+          }
+          if (savedAchievements && savedAchievements.length > 0) {
+            setAchievementsList(savedAchievements);
+          }
+          if (savedCertificates && savedCertificates.length > 0) {
+            setCertificatesList(savedCertificates);
           }
         }
       })
@@ -73,6 +87,42 @@ export default function ProfilePage() {
     setEducationList(educationList.filter((_, i) => i !== index));
   }
 
+  function handleAchievementChange(index, field, value) {
+    const updated = [...achievementsList];
+    updated[index][field] = value;
+    setAchievementsList(updated);
+  }
+
+  function addAchievement() {
+    setAchievementsList([
+      ...achievementsList,
+      { title: "", description: "", date: "" },
+    ]);
+  }
+
+  function removeAchievement(index) {
+    if (achievementsList.length === 1) return;
+    setAchievementsList(achievementsList.filter((_, i) => i !== index));
+  }
+
+  function handleCertificateChange(index, field, value) {
+    const updated = [...certificatesList];
+    updated[index][field] = value;
+    setCertificatesList(updated);
+  }
+
+  function addCertificate() {
+    setCertificatesList([
+      ...certificatesList,
+      { name: "", issuer: "", date: "", link: "" },
+    ]);
+  }
+
+  function removeCertificate(index) {
+    if (certificatesList.length === 1) return;
+    setCertificatesList(certificatesList.filter((_, i) => i !== index));
+  }
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -80,6 +130,8 @@ export default function ProfilePage() {
     const studentData = {
       profile,
       education: educationList.filter((edu) => edu.institution || edu.degree),
+      achievements: achievementsList.filter((ach) => ach.title || ach.description),
+      certificates: certificatesList.filter((cert) => cert.name || cert.issuer),
     };
 
     // Mirror to localStorage immediately so subsequent pages can read it
@@ -135,8 +187,8 @@ export default function ProfilePage() {
 
         {/* Heading */}
         <div className="page-heading">
-          <h1>Student Profile & Education</h1>
-          <p className="sub">Provide your contact details and academic background for your CV header.</p>
+          <h1>Student Profile & Background</h1>
+          <p className="sub">Provide your contact details, education, achievements, and certifications.</p>
         </div>
 
         {/* Profile Card */}
@@ -197,7 +249,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Education Card */}
-        <div className="card">
+        <div className="card" style={{ marginBottom: "24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
             <h2 style={{ fontSize: "1.1rem", color: "var(--gold)" }}>Education</h2>
             <button className="secondary" type="button" onClick={addEducation} style={{ padding: "6px 12px", fontSize: "0.85rem" }}>
@@ -278,6 +330,142 @@ export default function ProfilePage() {
           ))}
         </div>
 
+        {/* Achievements Card */}
+        <div className="card" style={{ marginBottom: "24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ fontSize: "1.1rem", color: "var(--gold)" }}>Key Achievements & Honors</h2>
+            <button className="secondary" type="button" onClick={addAchievement} style={{ padding: "6px 12px", fontSize: "0.85rem" }}>
+              + Add Achievement
+            </button>
+          </div>
+
+          {achievementsList.map((ach, idx) => (
+            <div key={idx} style={{
+              padding: "16px",
+              background: "rgba(10, 22, 40, 0.4)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--navy-border)",
+              marginBottom: idx < achievementsList.length - 1 ? "16px" : "0"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                  Achievement #{idx + 1}
+                </span>
+                {achievementsList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeAchievement(idx)}
+                    style={{ background: "none", border: "none", color: "var(--error)", cursor: "pointer", fontSize: "0.85rem" }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              <div className="row-2col">
+                <div className="field">
+                  <label>Achievement Title / Award</label>
+                  <input
+                    placeholder="e.g. 1st Place - Smart India Hackathon"
+                    value={ach.title}
+                    onChange={(e) => handleAchievementChange(idx, "title", e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label>Date / Year</label>
+                  <input
+                    placeholder="e.g. Nov 2024"
+                    value={ach.date}
+                    onChange={(e) => handleAchievementChange(idx, "date", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="field">
+                <label>Description / Details</label>
+                <input
+                  placeholder="e.g. Built an AI computer vision system out of 500+ competing university teams."
+                  value={ach.description}
+                  onChange={(e) => handleAchievementChange(idx, "description", e.target.value)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Certifications Card */}
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ fontSize: "1.1rem", color: "var(--gold)" }}>Certifications & Credentials</h2>
+            <button className="secondary" type="button" onClick={addCertificate} style={{ padding: "6px 12px", fontSize: "0.85rem" }}>
+              + Add Certificate
+            </button>
+          </div>
+
+          {certificatesList.map((cert, idx) => (
+            <div key={idx} style={{
+              padding: "16px",
+              background: "rgba(10, 22, 40, 0.4)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--navy-border)",
+              marginBottom: idx < certificatesList.length - 1 ? "16px" : "0"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                  Certificate #{idx + 1}
+                </span>
+                {certificatesList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeCertificate(idx)}
+                    style={{ background: "none", border: "none", color: "var(--error)", cursor: "pointer", fontSize: "0.85rem" }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              <div className="row-2col">
+                <div className="field">
+                  <label>Certificate Name</label>
+                  <input
+                    placeholder="e.g. AWS Certified Solutions Architect"
+                    value={cert.name}
+                    onChange={(e) => handleCertificateChange(idx, "name", e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label>Issuing Organization</label>
+                  <input
+                    placeholder="e.g. Amazon Web Services"
+                    value={cert.issuer}
+                    onChange={(e) => handleCertificateChange(idx, "issuer", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="row-2col">
+                <div className="field">
+                  <label>Date Issued</label>
+                  <input
+                    placeholder="e.g. Jan 2025"
+                    value={cert.date}
+                    onChange={(e) => handleCertificateChange(idx, "date", e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label>Certificate URL / Verification Link</label>
+                  <input
+                    placeholder="https://credly.com/badges/your-credential-id"
+                    value={cert.link}
+                    onChange={(e) => handleCertificateChange(idx, "link", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
         {/* Navigation */}
         <div className="row" style={{ marginTop: "24px" }}>
           <button className="primary" onClick={proceed}>Continue to Experience</button>
@@ -286,4 +474,5 @@ export default function ProfilePage() {
       </div>
     </div>
   );
+
 }

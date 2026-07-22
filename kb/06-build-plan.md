@@ -38,7 +38,7 @@ GitHub OAuth is the primary/recommended login. REVISED again 2026-07-21: auth is
 - To run: both servers already running dev mode. Frontend: http://localhost:5173. Backend: http://localhost:4000.
 
 ## CV templates (`cv-templates/`, done 2026-07-21)
-- 8 templates pulled from `AyushDas4890/CV_TEMPLATES` (cv-formats/), each verified by actually compiling (xelatex where fontspec is used — deedy, plushcv; pdflatex otherwise). Missing CTAN packages (lato, fontawesome5/4, roboto, sourcesans, biblatex) fetched and installed into TEXMFHOME without root — see kb history for exact package fixes.
+- 7 templates pulled from `AyushDas4890/CV_TEMPLATES` (cv-formats/), each verified by actually compiling (xelatex where fontspec is used — deedy, plushcv; pdflatex otherwise). Missing CTAN packages (lato, fontawesome5/4, roboto, sourcesans, biblatex) fetched and installed into TEXMFHOME without root — see kb history for exact package fixes.
 - Cleaned to LaTeX source + only-required assets (font folders kept only for deedy/plushcv which need them via `\setmainfont Path=`). No PDFs, no .aux/.log/.out build junk committed.
 - `altacv/sample.tex`: Publications section commented out (needed biblatex just for unrelated demo content) — real edit, not a template defect.
 - `frontend/public/template-previews/*.png`: real compiled renders, `pdftoppm -png -r 150 -f 1 -l 1` — **page 1 only, always**. See OPEN item in 07-decisions re: multi-page templates.

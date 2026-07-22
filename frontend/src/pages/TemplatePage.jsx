@@ -9,7 +9,6 @@ const TEMPLATES = [
   { id: "dphang",     name: "dphang CV" },
   { id: "anubhav",    name: "Resume by Anubhav" },
   { id: "altacv",     name: "AltaCV" },
-  { id: "moderncv",   name: "ModernCV" },
   { id: "plushcv",    name: "PlushCV" },
   { id: "deedy",      name: "Deedy CV" },
   { id: "awesome-cv", name: "Awesome CV" },

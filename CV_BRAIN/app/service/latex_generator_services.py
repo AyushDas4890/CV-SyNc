@@ -89,10 +89,21 @@ def _call_groq(system_prompt: str, user_prompt: str) -> str:
 
 def _call_openai(system_prompt: str, user_prompt: str) -> str:
     """Call OpenAI LLM. Returns raw response text or empty string on failure."""
+    import traceback
     openai_api_key = config.get("OPENAI_API_KEY")
     if not openai_api_key:
         print("[LLM_BRAIN] No OPENAI_API_KEY configured, skipping OpenAI.")
         return ""
+
+    # Safety cap: gpt-4o-mini has a 128k token context. Each char ≈ 0.25 tokens.
+    # Cap total prompt at 100k chars (~25k tokens input) to leave room for output.
+    MAX_PROMPT_CHARS = 100_000
+    total_chars = len(system_prompt) + len(user_prompt)
+    print(f"[LLM_BRAIN] Prompt size: {total_chars} chars (~{total_chars // 4} tokens est)")
+    if total_chars > MAX_PROMPT_CHARS:
+        print(f"[LLM_BRAIN] WARNING: Prompt exceeds {MAX_PROMPT_CHARS} chars, truncating user_prompt.")
+        overflow = total_chars - MAX_PROMPT_CHARS
+        user_prompt = user_prompt[:-overflow]
 
     try:
         # NOTE: was importing from langchain_community.chat_models, which is both the
@@ -112,9 +123,12 @@ def _call_openai(system_prompt: str, user_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ])
-        return res.content or ""
+        output = res.content or ""
+        print(f"[LLM_BRAIN] OpenAI response: {len(output)} chars, has_documentclass={chr(92) + 'documentclass' in output}")
+        return output
     except Exception as e:
-        print(f"[LLM_BRAIN] OpenAI call failed: {e}")
+        print(f"[LLM_BRAIN] OpenAI call FAILED — {type(e).__name__}: {e}")
+        traceback.print_exc()
         return ""
 
 
@@ -131,14 +145,25 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
     Returns the raw LLM response text.
     """
     # Try OpenAI first
+    print("[LLM_BRAIN] Trying OpenAI...")
     result = _call_openai(system_prompt, user_prompt)
     if _has_valid_tex(result):
+        print("[LLM_BRAIN] OpenAI returned valid LaTeX.")
         return result
+    else:
+        print(f"[LLM_BRAIN] OpenAI did NOT return valid LaTeX (len={len(result)}). Trying Groq fallback...")
+        if result:
+            print(f"[LLM_BRAIN] OpenAI raw output (first 200): {result[:200]!r}")
 
     # Fallback to Groq
     result = _call_groq(system_prompt, user_prompt)
     if _has_valid_tex(result):
+        print("[LLM_BRAIN] Groq returned valid LaTeX.")
         return result
+    else:
+        print(f"[LLM_BRAIN] Groq also did NOT return valid LaTeX (len={len(result)}).")
+        if result:
+            print(f"[LLM_BRAIN] Groq raw output (first 200): {result[:200]!r}")
 
     return ""
 
@@ -206,6 +231,11 @@ async def generate_cv(
 
     # ── Step 4: Call LLM (attempt 1) ──────────────────────────────────────
     edited_tex = call_llm(system_prompt, user_prompt)
+
+    # DEBUG: dump the raw section headers the LLM produced, to diagnose validation
+    import re as _re
+    for _m in _re.findall(r"\\section\*?\{[^}]*\}", edited_tex or ""):
+        print(f"[LLM_BRAIN][DEBUG] section header: {_m!r}")
 
     # ── Step 5: Validate output ───────────────────────────────────────────
     validation_passed = True

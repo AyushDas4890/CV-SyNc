@@ -10,12 +10,18 @@ from app.models import UserProfile, ValidationResult
 
 
 def _check_section_present(tex: str, section_name: str) -> bool:
-    """Check if a section with the given name exists and has content after it."""
-    # Match common section patterns across all templates
+    """
+    Check if a section with the given name exists and has content after it.
+    Matches on the section name appearing anywhere inside the braces, not an
+    exact match — templates decorate headers (e.g. \\section{~~Education},
+    \\section{Skills Summary}) and an exact match would false-negative on
+    sections that are actually present.
+    """
+    escaped_name = re.escape(section_name)
     patterns = [
-        rf"\\section\{{{section_name}\}}",
-        rf"\\cvsection\{{{section_name}\}}",
-        rf"\\subsection\{{{section_name}\}}",
+        rf"\\section\*?\{{[^{{}}]*{escaped_name}[^{{}}]*\}}",
+        rf"\\cvsection\{{[^{{}}]*{escaped_name}[^{{}}]*\}}",
+        rf"\\subsection\*?\{{[^{{}}]*{escaped_name}[^{{}}]*\}}",
     ]
     for pattern in patterns:
         if re.search(pattern, tex, re.IGNORECASE):

@@ -1,0 +1,15 @@
+[project]
+name = "llm-brain"
+version = "0.1.0"
+description = "LLM Brain - ATS Resume & LaTeX Generation Engine"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.139.2",
+    "httpx>=0.28.0",
+    "langchain>=1.3.14",
+    "langchain-groq>=1.1.3",
+    "langchain-openai>=0.3.0",
+    "python-dotenv>=1.1.0",
+    "uvicorn>=0.51.0",
+]

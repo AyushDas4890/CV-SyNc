@@ -120,16 +120,22 @@ function publicProfile(user) {
 
 // ── Profile & Education ────────────────────────────────────────
 /**
- * Saves a student's profile and education data against their user record.
+ * Saves a student's profile/education/achievements/certificates against their user
+ * record. Merges onto whatever was saved before, so a caller that omits a field
+ * (rather than passing it as []/{} explicitly) doesn't wipe it out.
  * @param {string} userId
- * @param {{ profile: object, education: object[] }} data
+ * @param {{ profile?: object, education?: object[], achievements?: object[], certificates?: object[] }} data
  */
 function saveProfile(userId, data) {
   const user = usersById.get(userId);
   if (!user) throw new Error("USER_NOT_FOUND");
+  // Strip undefined keys before merging — a plain {...prev, ...data} would
+  // overwrite an existing field with `undefined` if the caller's payload
+  // simply didn't include that key, rather than only updating what was sent.
+  const defined = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
   user.studentProfile = {
     ...(user.studentProfile || {}),
-    ...data,
+    ...defined,
     updatedAt: new Date().toISOString(),
   };
   return user.studentProfile;

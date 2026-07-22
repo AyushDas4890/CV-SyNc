@@ -20,5 +20,6 @@ router.post("/logout", githubController.logout);
 
 // ── GitHub Repos (needs active session + GitHub token) ────────
 router.get("/github/repos", requireSession, githubController.listRepos);
+router.get("/github/repos/:owner/:repo/readme", requireSession, githubController.getRepoReadme);
 
 module.exports = router;

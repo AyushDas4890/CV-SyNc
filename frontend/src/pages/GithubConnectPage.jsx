@@ -21,7 +21,17 @@ export default function GithubConnectPage() {
       const me = await api.me();
       setUsername(me.githubUsername);
       const res = await api.githubRepos();
-      setRepos(res.repos || []);
+      const fetched = res.repos || [];
+      setRepos(fetched);
+
+      // Re-select whatever was previously chosen (by id), now that we have the full list
+      try {
+        const saved = JSON.parse(localStorage.getItem("cv_sync_selected_repos") || "[]");
+        const savedIds = new Set(saved.map((r) => r.id));
+        if (savedIds.size > 0) setSelected(savedIds);
+      } catch {
+        // ignore malformed cache
+      }
     } catch (err) {
       if (err.message.includes("401")) {
         navigate("/auth");
@@ -36,6 +46,12 @@ export default function GithubConnectPage() {
     const next = new Set(selected);
     next.has(id) ? next.delete(id) : next.add(id);
     setSelected(next);
+  }
+
+  function proceed() {
+    const selectedRepos = (repos || []).filter((r) => selected.has(r.id));
+    localStorage.setItem("cv_sync_selected_repos", JSON.stringify(selectedRepos));
+    navigate("/onboarding/templates");
   }
 
   return (
@@ -124,7 +140,7 @@ export default function GithubConnectPage() {
           <button
             className="primary"
             disabled={!repos || selected.size === 0}
-            onClick={() => navigate("/onboarding/templates")}
+            onClick={proceed}
           >
             Continue ({selected.size} selected)
           </button>

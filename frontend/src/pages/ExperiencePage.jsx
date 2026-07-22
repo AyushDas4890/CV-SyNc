@@ -14,16 +14,33 @@ export default function ExperiencePage() {
     api.me()
       .then((res) => setUsername(res.githubUsername))
       .catch(() => navigate("/auth"));
+
+    try {
+      const saved = JSON.parse(localStorage.getItem("cv_sync_experience") || "[]");
+      if (Array.isArray(saved) && saved.length > 0) setEntries(saved);
+    } catch {
+      // ignore malformed cache
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function addEntry() {
     if (!form.company && !form.role) return;
-    setEntries([...entries, form]);
+    const next = [...entries, form];
+    setEntries(next);
     setForm({ company: "", role: "", dates: "", bullets: "" });
+    localStorage.setItem("cv_sync_experience", JSON.stringify(next));
+  }
+
+  function removeEntry(index) {
+    const next = entries.filter((_, i) => i !== index);
+    setEntries(next);
+    localStorage.setItem("cv_sync_experience", JSON.stringify(next));
   }
 
   function proceed() {
+    // Entries are already persisted to localStorage as they're added (addEntry/removeEntry),
+    // so nothing to save here — just move on.
     navigate("/onboarding/github");
   }
 
@@ -113,6 +130,13 @@ export default function ExperiencePage() {
               <div key={i} className="entry-item">
                 <strong>{en.role}</strong>
                 <div className="entry-meta">{en.company}{en.dates ? ` · ${en.dates}` : ""}</div>
+                <button
+                  type="button"
+                  onClick={() => removeEntry(i)}
+                  style={{ background: "none", border: "none", color: "var(--error)", cursor: "pointer", fontSize: "0.85rem" }}
+                >
+                  Remove
+                </button>
               </div>
             ))}
           </div>

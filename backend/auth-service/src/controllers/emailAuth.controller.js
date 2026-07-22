@@ -18,8 +18,17 @@ exports.register = async (req, res) => {
 
   try {
     const user = await userStore.createEmailUser(email, password, displayName);
-    req.session.userId = user.id;
-    return res.status(201).json({ ok: true, user: userStore.publicProfile(user) });
+    // Matches githubAuth.controller.js's callback(): regenerate the session id on
+    // login so a pre-login session (and anything an attacker set on it) can't be
+    // reused post-login. Was missing here — only the GitHub path had it.
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error("[email/register] session regenerate failed", err.message);
+        return res.status(500).json({ error: "Registration failed. Please try again." });
+      }
+      req.session.userId = user.id;
+      return res.status(201).json({ ok: true, user: userStore.publicProfile(user) });
+    });
   } catch (err) {
     if (err.message === "EMAIL_TAKEN") {
       return res.status(409).json({ error: "An account with this email already exists." });
@@ -43,8 +52,14 @@ exports.login = async (req, res) => {
       // deliberately vague — don't reveal whether email exists
       return res.status(401).json({ error: "Invalid email or password." });
     }
-    req.session.userId = user.id;
-    return res.json({ ok: true, user: userStore.publicProfile(user) });
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error("[email/login] session regenerate failed", err.message);
+        return res.status(500).json({ error: "Login failed. Please try again." });
+      }
+      req.session.userId = user.id;
+      return res.json({ ok: true, user: userStore.publicProfile(user) });
+    });
   } catch (err) {
     console.error("[email/login]", err.message);
     return res.status(500).json({ error: "Login failed. Please try again." });

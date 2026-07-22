@@ -74,9 +74,31 @@ async function fetchUserRepos(token, { page = 1, perPage = 30 } = {}) {
     description: r.description,
     language: r.language,
     stars: r.stargazers_count,
+    topics: r.topics || [],
     url: r.html_url,
     updatedAt: r.updated_at,
   }));
+}
+
+// GET /repos/{owner}/{repo}/readme — used to feed real project context into
+// CV_BRAIN's bullet generation (kb/05-llm-rag.md fetch step).
+// Returns "" (not an error) for repos with no README, so callers can just
+// drop it into the payload without special-casing.
+async function fetchRepoReadme(token, owner, repo) {
+  try {
+    const res = await axios.get(`${API_BASE}/repos/${owner}/${repo}/readme`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github.raw+json",
+      },
+      httpsAgent,
+    });
+    // Accept: raw+json gives plain text directly; res.data is a string
+    return typeof res.data === "string" ? res.data : "";
+  } catch (err) {
+    if (err.response?.status === 404) return ""; // no README — not an error
+    throw err;
+  }
 }
 
 module.exports = {
@@ -85,4 +107,5 @@ module.exports = {
   exchangeCodeForToken,
   fetchGithubUser,
   fetchUserRepos,
+  fetchRepoReadme,
 };

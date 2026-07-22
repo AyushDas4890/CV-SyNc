@@ -2,7 +2,7 @@ const userStore = require("../services/userStore.service");
 
 /**
  * POST /api/profile
- * Body: { profile: { fullName, phone, email, githubUrl, linkedinUrl }, education: [...] }
+ * Body: { profile: {...}, education: [...], achievements: [...], certificates: [...] }
  * Saves the student profile data against the authenticated user's session.
  */
 exports.save = (req, res) => {
@@ -10,14 +10,16 @@ exports.save = (req, res) => {
     return res.status(401).json({ error: "not authenticated" });
   }
 
-  const { profile, education } = req.body || {};
+  // Was only forwarding { profile, education } — achievements/certificates were
+  // silently dropped on every save even though ProfilePage.jsx sends all four.
+  const { profile, education, achievements, certificates } = req.body || {};
 
-  if (!profile && !education) {
-    return res.status(400).json({ error: "No profile or education data provided." });
+  if (!profile && !education && !achievements && !certificates) {
+    return res.status(400).json({ error: "No profile data provided." });
   }
 
   try {
-    const saved = userStore.saveProfile(req.session.userId, { profile, education });
+    const saved = userStore.saveProfile(req.session.userId, { profile, education, achievements, certificates });
     return res.json({ ok: true, studentProfile: saved });
   } catch (err) {
     if (err.message === "USER_NOT_FOUND") {

@@ -4,6 +4,7 @@ import ProfilePage from "./pages/ProfilePage.jsx";
 import ExperiencePage from "./pages/ExperiencePage.jsx";
 import GithubConnectPage from "./pages/GithubConnectPage.jsx";
 import TemplatePage from "./pages/TemplatePage.jsx";
+import ResultPage from "./pages/ResultPage.jsx";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
       <Route path="/onboarding/experience" element={<ExperiencePage />} />
       <Route path="/onboarding/github" element={<GithubConnectPage />} />
       <Route path="/onboarding/templates" element={<TemplatePage />} />
+      <Route path="/onboarding/result" element={<ResultPage />} />
     </Routes>
   );
 }

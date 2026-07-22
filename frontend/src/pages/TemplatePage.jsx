@@ -4,15 +4,26 @@ import { api } from "../api.js";
 import LogoutBar from "../components/LogoutBar.jsx";
 import "../styles.css";
 
+// id           = short id used by frontend routes, thumbnails (/template-previews/<id>.png), local state
+// brainId      = template_id key LLM_BRAIN's TEMPLATE_REGISTRY expects (app/prompts/template_registry.py)
+// Keep these in sync with CV_BRAIN's registry — see brainId mapping notes in kb/07-decisions.md
 const TEMPLATES = [
-  { id: "jake",       name: "Jake's Resume" },
-  { id: "dphang",     name: "dphang CV" },
-  { id: "anubhav",    name: "Resume by Anubhav" },
-  { id: "altacv",     name: "AltaCV" },
-  { id: "plushcv",    name: "PlushCV" },
-  { id: "deedy",      name: "Deedy CV" },
-  { id: "awesome-cv", name: "Awesome CV" },
+  { id: "jake",       name: "Jake's Resume",      brainId: "Jake_s_Resume__3_" },
+  { id: "dphang",     name: "dphang CV",          brainId: "dphang_CV_Template__1_" },
+  { id: "anubhav",    name: "Resume by Anubhav",  brainId: "Resume_Template_by_Anubhav__2_" },
+  { id: "altacv",     name: "AltaCV",              brainId: "AltaCV_Template__1_" },
+  { id: "plushcv",    name: "PlushCV",             brainId: "PlushCV__2_" },
+  { id: "deedy",      name: "Deedy CV",            brainId: "Deedy_CV__1_" },
+  { id: "awesome-cv", name: "Awesome CV",          brainId: "Awesome_CV__3_" },
 ];
+
+// Lookup helpers — use these instead of hand-rolling id <-> brainId conversions elsewhere
+export function brainIdFor(shortId) {
+  return TEMPLATES.find((t) => t.id === shortId)?.brainId ?? null;
+}
+export function shortIdFor(brainId) {
+  return TEMPLATES.find((t) => t.brainId === brainId)?.id ?? null;
+}
 
 const CARD_WIDTH  = 220; // px — card width
 const CARD_GAP    = 20;  // px — gap between cards
@@ -25,6 +36,8 @@ export default function TemplatePage() {
   const [pageCounts, setPageCounts]   = useState({});
   const [canLeft, setCanLeft]         = useState(false);
   const [canRight, setCanRight]       = useState(true);
+  const [generating, setGenerating]   = useState(false);
+  const [genError, setGenError]       = useState("");
   const navigate = useNavigate();
 
   const scrollRef   = useRef(null);
@@ -81,6 +94,22 @@ export default function TemplatePage() {
   function confirmSelection() {
     setChosen(previewing.id);
     setPreviewing(null);
+    // Persist both ids: `id` for frontend/thumbnails, `brainId` for CV_BRAIN's /api/generate-cv template_id
+    localStorage.setItem("cv_sync_template", JSON.stringify({ id: previewing.id, brainId: previewing.brainId }));
+  }
+
+  async function generateCv() {
+    setGenError("");
+    setGenerating(true);
+    try {
+      const result = await api.generateCv();
+      localStorage.setItem("cv_sync_generated_cv", JSON.stringify(result));
+      navigate("/onboarding/result");
+    } catch (err) {
+      setGenError(err.message);
+    } finally {
+      setGenerating(false);
+    }
   }
 
   return (
@@ -171,9 +200,11 @@ export default function TemplatePage() {
       {/* CTA — back inside constrained content */}
       <div className="page-content">
         <div className="row" style={{ marginTop: 28 }}>
-          <button className="primary" disabled={!chosen}>
-            {chosen
-              ? `Continue with ${TEMPLATES.find((t) => t.id === chosen).name}`
+          <button className="primary" disabled={!chosen || generating} onClick={generateCv}>
+            {generating
+              ? "Fetching repo details & generating…"
+              : chosen
+              ? `Generate CV with ${TEMPLATES.find((t) => t.id === chosen).name}`
               : "Select a template above"}
           </button>
         </div>
@@ -181,6 +212,9 @@ export default function TemplatePage() {
           <p className="notice" style={{ textAlign: "center", marginTop: 8 }}>
             Click a template card to preview and select
           </p>
+        )}
+        {genError && (
+          <p className="error" style={{ textAlign: "center", marginTop: 8 }}>{genError}</p>
         )}
       </div>
 

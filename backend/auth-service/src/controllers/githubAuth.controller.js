@@ -91,4 +91,21 @@ async function listRepos(req, res) {
   }
 }
 
-module.exports = { login, callback, me, logout, listRepos };
+// GET /api/auth/github/repos/:owner/:repo/readme
+async function getRepoReadme(req, res) {
+  const token = userStore.getGithubToken(req.session.userId);
+  if (!token) {
+    return res.status(400).json({ ok: false, error: "github not connected" });
+  }
+
+  const { owner, repo } = req.params;
+  try {
+    const readme = await githubAuthService.fetchRepoReadme(token, owner, repo);
+    res.json({ ok: true, readme });
+  } catch (err) {
+    console.error("[github repo readme]", err.message);
+    res.status(502).json({ ok: false, error: "failed to fetch readme from github" });
+  }
+}
+
+module.exports = { login, callback, me, logout, listRepos, getRepoReadme };

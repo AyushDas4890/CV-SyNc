@@ -135,6 +135,23 @@ def sanitize_generated_tex(tex: str) -> str:
 
     tex = fix_href_urls(tex)
 
+    # 3b. Escape literal &/_ inside section-heading command arguments.
+    # These commands are skipped by the per-line escaping pass below (they're
+    # TeX commands, not body text), but their brace argument IS free text
+    # (e.g. \cvsection{Achievements & Honors}) and must still be escaped —
+    # an unescaped & there is a fatal "Misplaced alignment tab character".
+    def escape_heading_arg(match):
+        cmd, arg = match.group(1), match.group(2)
+        arg = re.sub(r'(?<!\\)&', r'\&', arg)
+        arg = re.sub(r'(?<!\\)_', r'\_', arg)
+        return f'{cmd}{{{arg}}}'
+
+    tex = re.sub(
+        r'(\\(?:section|subsection|cvsection)\*?)\{([^{}]*)\}',
+        escape_heading_arg,
+        tex,
+    )
+
     # 4. Process line by line for character escaping & deduplication
     lines = tex.split('\n')
     seen_packages = set()
@@ -199,12 +216,42 @@ def sanitize_generated_tex(tex: str) -> str:
         r"\\begin\{itemize\}(?:\[[^\]]*\])?\s*\\end\{itemize\}", "", res_tex
     )
 
+    # 5b. Remove itemize blocks that contain NO \item — even if they hold
+    # other tokens (e.g. \parskip=0.1em). An itemize with settings but no
+    # \item is fatal: "Something's wrong--perhaps a missing \item." This
+    # happens when a section (e.g. Experience) has no data to fill. Skip
+    # blocks with nested itemize to avoid mismatching on the non-greedy span.
+    def drop_itemless_itemize(match):
+        body = match.group(1)
+        if r'\begin{itemize}' in body:
+            return match.group(0)  # nested — leave for a later pass
+        return '' if r'\item' not in body else match.group(0)
+
+    res_tex = re.sub(
+        r"\\begin\{itemize\}(?:\[[^\]]*\])?(.*?)\\end\{itemize\}",
+        drop_itemless_itemize,
+        res_tex,
+        flags=re.DOTALL,
+    )
+
     # 6. Remove empty skill lines like \textbf{Databases}{: } \\
     res_tex = re.sub(r"\\textbf\{[^}]+\}\{:\s*\}\s*(\\\\)?", "", res_tex)
 
     # 7. Remove trailing \\ before closing braces or \end{itemize}
     res_tex = re.sub(r"\\\\\s*(\}\s*\\end\{itemize\})", r"\1", res_tex)
     res_tex = re.sub(r"\\\\\s*(\}\s*\})", r"\1", res_tex)
+
+    # 7b. Remove stray \\ that has no line to end — a classic fatal
+    # "There's no line here to end." A forced linebreak is only valid after
+    # actual content on the same line, so strip \\ when it (a) sits alone on
+    # its own line, or (b) directly follows a section header / \begin{...} /
+    # blank line, where there is nothing preceding it to break.
+    res_tex = re.sub(r"(?m)^[ \t]*\\\\[ \t]*$\n?", "", res_tex)
+    res_tex = re.sub(
+        r"(\\(?:section|subsection|cvsection)\*?\{[^{}]*\}|\\begin\{[^{}]*\})\s*\\\\",
+        r"\1",
+        res_tex,
+    )
 
     # 8. Remove empty sections with no items
     res_tex = re.sub(

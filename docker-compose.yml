@@ -1,0 +1,70 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  cv-builder:
+    build:
+      context: ./cv_builder_src
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      logger_level: info
+    restart: unless-stopped
+
+  cv-brain:
+    build:
+      context: ./CV_BRAIN
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      GROQ_TEMPERATURE: ${GROQ_TEMPERATURE:-0.1}
+      GROQ_MAX_TOKENS: ${GROQ_MAX_TOKENS:-8192}
+      CV_BUILDER_URL: http://cv-builder:3000
+    depends_on:
+      - cv-builder
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost:4000/api/auth/github/callback}
+      GITHUB_OAUTH_SCOPE: ${GITHUB_OAUTH_SCOPE:-public_repo}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:4000/api/auth/google/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      USE_REDIS: "true"
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:-change-me}
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:4000}
+    depends_on:
+      - auth-service
+      - cv-brain
+    restart: unless-stopped
+
+volumes:
+  redis-data:

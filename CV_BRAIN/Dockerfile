@@ -2,7 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+# UV_SYSTEM_CERTS=1 forces uv to use OpenSSL + system CA certs instead of
+# its bundled rustls, which rejects corporate SSL-inspection proxy certs.
+# UV_PYTHON pins uv to system Python, overriding .python-version (which says 3.10).
+ENV UV_SYSTEM_CERTS=1
+ENV UV_PYTHON=python3.11
+
+RUN pip install --no-cache-dir \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org \
+    uv
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
@@ -11,4 +20,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use the pre-built venv's uvicorn directly — avoids any uv runtime network calls
+CMD [".venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

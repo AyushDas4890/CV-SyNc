@@ -37,6 +37,12 @@ Full path now works: Profile/Experience/GitHub/Template pages -> `frontend/src/a
 - `frontend/src/api.js` also gained `compileCv()` (posts to CV_BUILDER's `/api/compile`, handles the binary-PDF-or-JSON-error response shape) and ResultPage now has a "Compile to PDF" button with inline PDF preview/download, plus 422 log/error display.
 - Still not built: the diff/approve gate (see LOCKED section above — flagged as a real gap, not silently dropped) and any UI for `target_role`/`target_pages` (both default `""`/`1` in the payload — no form field collects them yet).
 
+## LOCKED (2026-07-27 — Docker / CV_BRAIN Dockerfile)
+- CV_BRAIN Dockerfile base = `python:3.11-slim`, NOT `python:3.10-slim`. The `.python-version` file says `3.10` (used for local dev with `uv`), but the container pins `ENV UV_PYTHON=python3.11` to override it. Without this, `uv run` downloads CPython 3.10 at container startup — fails behind firewalls.
+- CMD = `.venv/bin/uvicorn main:app ...` (direct venv invocation). NOT `uv run uvicorn ...`. The `uv run` form causes `uv` to re-resolve the Python interpreter, potentially triggering a network download. Direct invocation is hermetic.
+- `ENV UV_SYSTEM_CERTS=1` + pip `--trusted-host pypi.org --trusted-host files.pythonhosted.org`: required for builds behind SSL-inspection firewalls (Sophos, Zscaler, etc.) that replace TLS certs with their own CA. `UV_SYSTEM_CERTS` (replaces deprecated `UV_NATIVE_TLS`) tells `uv` to use OpenSSL + system CA bundle instead of bundled rustls certs.
+- Docker Compose `--no-build` is the safe startup if images are already built. `docker compose build` will fail behind Sophos because BuildKit's metadata check on `auth.docker.io` gets intercepted. Workaround: build with `docker build -f Dockerfile.patch` using the existing cached image as base, or disable Sophos for Docker Desktop.
+
 ## TEAMMATE RELAY (pending)
 - CV_BUILDER: timeout code 15s vs README 30s
 - CV_BUILDER: PORT no fallback in server.config.js

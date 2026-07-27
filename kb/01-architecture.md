@@ -54,6 +54,13 @@ Contracts (never implemented):
 ```
 2. writer API (planned, never built): POST /api/write {projects} (?dry=true → diff only), POST /api/approve → compile + snapshot.
 
-Infra (still relevant if this ever gets containerized): docker-compose = auth + CV_BRAIN + CV_BUILDER + mysql + redis. Reverse proxy (nginx) in front, single public port — deploy config, not app code.
+Infra (containerised, working as of 2026-07-27): `docker-compose.yml` at repo root orchestrates 5 services:
+  - `redis` (redis:7-alpine) — session store for auth-service
+  - `cv-builder` (builds from `./cv_builder_src`) — TexLive + Node, port 3000
+  - `cv-brain` (builds from `./CV_BRAIN`) — Python 3.11 + FastAPI, port 8000
+  - `auth-service` (builds from `./backend/auth-service`) — Node/Express, port 4000
+  - `frontend` (builds from `./frontend`) — Vite dev server, port 5173
+
+Docker gotcha: CV_BRAIN's `.python-version` says `3.10` but its Dockerfile uses `python:3.11-slim`. `ENV UV_PYTHON=python3.11` overrides this so `uv` doesn't try to download Python 3.10 at build/runtime. `ENV UV_SYSTEM_CERTS=1` + `--trusted-host` flags handle corporate SSL-inspection proxies (e.g., Sophos/Zscaler). CMD invokes `.venv/bin/uvicorn` directly instead of `uv run` to avoid any runtime network calls.
 
 Key principle (NOT how CV_BRAIN actually works — see above): LLM outputs JSON ONLY, never raw LaTeX. Deterministic renderer owns tex. Diff gate between LLM and CV always.

@@ -14,7 +14,14 @@ RUN pip install --no-cache-dir \
     uv
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+# NOT --frozen: pyproject.toml gained `pypdf` (needed to measure whether the
+# generated CV lands on 1 or 2 pages) and uv.lock has not been regenerated,
+# so --frozen would fail the build with "the lockfile is not up-to-date".
+# Plain `uv sync` re-resolves and refreshes the lock inside the image.
+# Regenerate uv.lock locally with `uv lock` and restore --frozen when
+# convenient — this only relaxes BUILD-time resolution; runtime is still the
+# hermetic `.venv/bin/uvicorn` invocation below.
+RUN uv sync --no-dev
 
 COPY . .
 

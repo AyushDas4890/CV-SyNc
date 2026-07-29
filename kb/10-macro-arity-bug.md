@@ -99,6 +99,58 @@ entry rather than a hard failure.
 this is validated by parsing, not by pdflatex. Run one real generation per
 template to confirm.
 
+---
+
+# Sanitizer bugs found by compiling for real (2026-07-29, second failure)
+
+Reported: `./doc.tex:122: Misplaced alignment tab character &.` on
+`\resumeItem{Interview Prep.}{... 730+ Q&A boxes ...}`.
+
+Compiling the templates through the sanitizer for real (TeX Live is available
+in the dev sandbox) exposed **three** bugs, only one of which was the reported
+symptom. All are fixed and verified by actual `latexmk` runs.
+
+## Bug 1 — specials inside macro arguments were never escaped
+
+Escaping was done line by line and skipped any line starting with a known TeX
+command. Since essentially every content line starts with `\resumeItem`,
+`\cvitem` and friends, `&` and `_` inside macro **arguments** were never
+touched. That is how "Q&A" reached the compiler.
+
+Replaced with `escape_body_specials()`, which walks the body and understands
+where these characters are legitimate:
+  - math mode (`$...$`) — `_` is a subscript
+  - alignment environments (tabular, array, align, …) — `&` is a column tab
+  - URL arguments of `\href` / `\url` — must keep raw `&` and `_`
+  - comments, and already-escaped `\&` / `\_`
+
+## Bug 2 — `fix_href_extra_braces` corrupted balanced input (FATAL)
+
+It removed any `}` following a `\href{...}{...}`, assuming it was a stray. But
+in `\namesection{A}{B}{\href{url}{Label}}` that brace closes the **enclosing**
+group. Deedy and PlushCV both died with
+`File ended while scanning use of \namesection`.
+
+Now guarded: it only acts when the line genuinely has more `}` than `{`.
+
+## Bug 3 — `drop_itemless_itemize` emptied preamble macro definitions
+
+Its `DOTALL` match ran from the `\begin{itemize}` inside
+`\newcommand{\resumeSubHeadingListStart}{...}` to the `\end{itemize}` inside
+`\newcommand{\resumeSubHeadingListEnd}{...}`, deleting both bodies and
+producing `Lonely \item`. Only the later `replace_preamble_with_original()`
+call was hiding the damage. Now refuses to span a macro definition.
+
+## Verified with real compiles
+
+Before: running the sanitizer over each template's own source produced **0 of 4
+compilable**. After: **4 of 4**, both through the sanitizer alone and through
+the full production path (`sanitize` + `replace_preamble_with_original`).
+
+The reported failing document — unescaped `&` in a macro argument, plus the
+label-colon and arity mistakes — now compiles to 1 page with `Q&A` and `R&D`
+rendered correctly and no doubled colon.
+
 ## If a compile fails again
 
 1. Check `LaTeX Warning: Unused global option(s)` — identifies the template.

@@ -33,6 +33,15 @@ def fix_href_extra_braces(line: str) -> str:
     if r'\href{' not in line:
         return line
 
+    # Only act when the line actually has MORE closing braces than opening
+    # ones. Without this guard the function treated the closing brace of an
+    # enclosing group as "extra": `{\href{url}{Label}}` and
+    # `\namesection{A}{B}{\href{url}{Label}}` both lost their outer brace,
+    # which made Deedy and PlushCV die with
+    # "File ended while scanning use of \namesection".
+    if line.count("}") <= line.count("{"):
+        return line
+
     idx = 0
     while True:
         idx = line.find(r'\href{', idx)
@@ -81,6 +90,140 @@ def fix_href_extra_braces(line: str) -> str:
             idx = i
             
     return line
+
+
+# Environments where `&` is a real alignment tab and must NOT be escaped.
+_ALIGN_ENVS = {
+    "tabular", "tabular*", "tabularx", "longtable", "array", "align", "align*",
+    "aligned", "matrix", "pmatrix", "bmatrix", "vmatrix", "cases", "split",
+    "eqnarray", "eqnarray*", "supertabular", "tabu",
+}
+
+# Commands whose FIRST argument is a URL: raw `&` and `_` must survive there.
+_URL_COMMANDS = {"href", "url", "hyperref", "nolinkurl"}
+
+_CMD_RE = re.compile(r"\\([A-Za-z@]+)\*?")
+
+
+def _brace_group_end(text: str, i: int) -> int:
+    """Index just past the {...} group starting at i, or i if none."""
+    if i >= len(text) or text[i] != "{":
+        return i
+    depth = 0
+    while i < len(text):
+        if text[i] == "\\":
+            i += 2
+            continue
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return i
+
+
+def escape_body_specials(tex: str) -> str:
+    """
+    Escape bare `&` and `_` in document-body TEXT, including inside macro
+    arguments.
+
+    The previous approach escaped line by line and skipped any line starting
+    with a known TeX command. Since virtually every content line starts with
+    \\resumeItem, \\cvitem and friends, specials inside macro ARGUMENTS were
+    never escaped at all — a real compile died on
+    `\\resumeItem{Interview Prep.}{... 730+ Q&A boxes ...}` with
+    "Misplaced alignment tab character &".
+
+    Walks the body character by character and skips the places where these
+    characters are legitimate:
+      - math mode (`$...$`), where `_` is a subscript
+      - alignment environments, where `&` is a column separator
+      - URL arguments of \\href/\\url, which must keep raw `&` and `_`
+      - comments
+      - already-escaped `\\&` / `\\_`
+    """
+    if not isinstance(tex, str):
+        return tex
+
+    start = tex.find(r"\begin{document}")
+    if start < 0:
+        return tex
+
+    head, body = tex[:start], tex[start:]
+    out = []
+    i = 0
+    math = False
+    env_stack = []
+
+    while i < len(body):
+        ch = body[i]
+
+        if ch == "\\":
+            m = _CMD_RE.match(body, i)
+            if not m:
+                # Escaped character such as \& \_ \% — copy both chars as-is.
+                out.append(body[i : i + 2])
+                i += 2
+                continue
+
+            name = m.group(1)
+            out.append(body[i : m.end()])
+            i = m.end()
+
+            if name in ("begin", "end"):
+                j = i
+                while j < len(body) and body[j] in " \t":
+                    j += 1
+                end = _brace_group_end(body, j)
+                if end > j:
+                    env = body[j + 1 : end - 1].strip()
+                    if name == "begin":
+                        env_stack.append(env)
+                    elif env_stack and env_stack[-1] == env:
+                        env_stack.pop()
+                    out.append(body[i:end])
+                    i = end
+            elif name in _URL_COMMANDS:
+                j = i
+                while j < len(body) and body[j] in " \t":
+                    j += 1
+                end = _brace_group_end(body, j)
+                if end > j:
+                    # Copy the URL verbatim; the label argument that follows is
+                    # ordinary text and keeps being processed normally.
+                    out.append(body[i:end])
+                    i = end
+            continue
+
+        if ch == "%":
+            nl = body.find("\n", i)
+            nl = len(body) if nl < 0 else nl + 1
+            out.append(body[i:nl])
+            i = nl
+            continue
+
+        if ch == "$":
+            math = not math
+            out.append(ch)
+            i += 1
+            continue
+
+        if ch == "&" and not math and not (env_stack and env_stack[-1] in _ALIGN_ENVS):
+            out.append(r"\&")
+            i += 1
+            continue
+
+        if ch == "_" and not math:
+            out.append(r"\_")
+            i += 1
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return head + "".join(out)
 
 
 def sanitize_generated_tex(tex: str) -> str:
@@ -175,33 +318,13 @@ def sanitize_generated_tex(tex: str) -> str:
                 continue
             seen_packages.add(stripped)
 
-        # Only escape underscores/ampersands in document body text lines,
-        # NEVER in the preamble or lines with TeX commands/hrefs
-        if past_begin_doc and stripped and not stripped.startswith("%"):
-            has_tex_cmd = any(
-                stripped.startswith(c)
-                for c in [
-                    r'\begin', r'\end', r'\documentclass', r'\usepackage', r'\input',
-                    r'\newcommand', r'\renewcommand', r'\pagestyle', r'\fancyhf',
-                    r'\addtolength', r'\setlength', r'\titleformat', r'\urlstyle',
-                    r'\raggedbottom', r'\raggedright', r'\pdfgentounicode',
-                    r'\section', r'\resumeSubHeadingListStart', r'\resumeSubHeadingListEnd',
-                    r'\resumeSubheading', r'\resumeProjectHeading', r'\resumeItem',
-                    r'\resumeSubItem', r'\resumeSubSubheading',
-                    r'\cvsection', r'\cvevent', r'\cventry', r'\cvitem', r'\cvtag',
-                    r'\cvskill', r'\namesection', r'\runsubsection', r'\descript',
-                    r'\location', r'\sectionsep', r'\name', r'\position', r'\mobile',
-                    r'\email', r'\homepage', r'\github', r'\linkedin', r'\social',
-                    r'\makecvheader', r'\makecvfooter', r'\headerrow', r'\contactline',
-                    r'\moderncvstyle', r'\moderncvcolor', r'\photo', r'\title',
-                    r'\address', r'\phone', r'\born', r'\quote',
-                    r'\fontdir', r'\colorlet', r'\definecolor', r'\geometry',
-                    r'\divider', r'\switchcolumn', r'\columnratio',
-                ]
-            )
-            if not has_tex_cmd and r'\href{' not in line:
-                line = re.sub(r'(?<!\\)_', r'\_', line)
-                line = re.sub(r'(?<!\\)&', r'\&', line)
+        # NOTE: the per-line escaping that used to live here skipped any line
+        # starting with a known TeX command. Since nearly every content line
+        # starts with \resumeItem / \cvitem / etc., specials inside macro
+        # ARGUMENTS were never escaped — which is how "730+ Q&A boxes" reached
+        # the compiler and died with "Misplaced alignment tab character &".
+        # Escaping is now done by escape_body_specials() below, which walks the
+        # body and understands math mode, alignment environments and URLs.
 
         cleaned_lines.append(line)
 
@@ -225,6 +348,14 @@ def sanitize_generated_tex(tex: str) -> str:
         body = match.group(1)
         if r'\begin{itemize}' in body:
             return match.group(0)  # nested — leave for a later pass
+        # Never span a macro definition. Jake's preamble defines
+        #   \newcommand{\resumeSubHeadingListStart}{\begin{itemize}[...]}
+        #   \newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+        # and this DOTALL match happily ran from the \begin in one definition
+        # to the \end in the other, emptying both. Only the later
+        # replace_preamble_with_original() call was hiding the damage.
+        if r'\newcommand' in body or r'\renewcommand' in body:
+            return match.group(0)
         return '' if r'\item' not in body else match.group(0)
 
     res_tex = re.sub(
@@ -271,6 +402,10 @@ def sanitize_generated_tex(tex: str) -> str:
         fix_subheading_args,
         res_tex,
     )
+
+    # Escape bare & and _ in body text, including inside macro arguments.
+    # Runs last so earlier structural passes see the text unmodified.
+    res_tex = escape_body_specials(res_tex)
 
     return res_tex
 

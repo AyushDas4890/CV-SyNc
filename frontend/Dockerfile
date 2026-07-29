@@ -18,14 +18,25 @@ ENV VITE_API_URL=$VITE_API_URL \
 COPY . .
 RUN npm run build
 
-# ── Stage 2: serve it ─────────────────────────────────────────────────────
-# The previous image ran `npx vite` — the dev server. No minification, no
-# cache headers, an HMR websocket, and explicitly not for production use.
-FROM nginx:1.27-alpine
+# ── Stage 2: serve the built files ────────────────────────────────────────
+# nginx would be the better runtime (see nginx.conf, kept for that purpose),
+# but docker.io is unreachable from this network — every nginx tag fails to
+# resolve through the TLS-inspecting proxy — while node:20-alpine is already
+# present locally and the npm registry is reachable. So the static bundle is
+# served by `serve`, which also does the SPA history fallback that deep links
+# such as /onboarding/profile need.
+#
+# To move back to nginx once docker.io is reachable, restore the
+# `FROM nginx:1.27-alpine` stage that copies dist/ and nginx.conf.
+FROM node:20-alpine
 
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
+
+RUN npm install -g serve@14
+
+COPY --from=build /app/dist ./dist
 
 EXPOSE 5173
 
-CMD ["nginx", "-g", "daemon off;"]
+# -s = single-page app: unknown paths fall back to index.html.
+CMD ["serve", "-s", "dist", "-l", "5173"]

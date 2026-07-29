@@ -3,7 +3,15 @@
 RepoResume / CV-Sync: web app keep CV Projects section synced with GitHub repos.
 User tag repos → fetch README+metadata → LLM write bullets → inject into LaTeX CV template → human approve diff → compile PDF.
 
-Owner: Ayush (das.ayush4890@gmail.com), solo-intermediate dev. Teammate: Abhinav (github IamAbhinav01) — owns LaTeX compile service (DONE) and originally hosted CV_BRAIN; Ayush now also has contributor/push access to both his repos.
+Owner: Ayush (das.ayush4890@gmail.com), solo-intermediate dev. Teammate: Abhinav (github IamAbhinav01) — owns LaTeX compile service (DONE) and originally hosted CV_BRAIN.
+
+CORRECTED 2026-07-29: Ayush does NOT have push access to CV_BUILDER. Previously
+this file claimed "contributor/push access to both his repos" — an actual
+`git push origin master` returns `remote: Permission to
+IamAbhinav01/CV_BUILDER.git denied to AyushDas4890` / HTTP 403. Access to
+CV_BRAIN is untested since the 07-22 push (commit f5e3417 landed then, so it
+worked at least once). Do not assume push rights on either without checking.
+Pending CV_BUILDER work is staged as patches in kb/relay/cv_builder-patches/.
 
 State (2026-07-22):
 - compile service (CV_BUILDER): DONE (see 03) — lives at github.com/IamAbhinav01/CV_BUILDER, NOT vendored into this repo (Node/Express, Abhinav's)

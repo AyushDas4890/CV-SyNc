@@ -65,7 +65,19 @@ Full path now works: Profile/Experience/GitHub/Template pages -> `frontend/src/a
   `express-rate-limit` dependency — awaiting your go-ahead.
 
 ## TEAMMATE RELAY (pending)
-- CV_BUILDER: timeout code 15s vs README 30s
-- CV_BUILDER: PORT no fallback in server.config.js
+- BLOCKED 2026-07-29: Ayush has NO push access to IamAbhinav01/CV_BUILDER
+  (`git push` → 403, "Permission ... denied to AyushDas4890"). Everything below
+  that is code-fixable is committed locally in `cv_builder_src/` and exported as
+  patches to `kb/relay/cv_builder-patches/` (see its README). Needs either a
+  fork+PR, or push access from Abhinav.
+- FIXED in patch 0001 (awaiting relay): timeout code 15s vs README 30s — now
+  env-configurable, default 60s (15s was SIGKILLing xelatex templates mid-compile)
+- FIXED in patch 0001 (awaiting relay): PORT no fallback in server.config.js
+- FIXED in patch 0001 (awaiting relay): 422 branch logged a fixed string and
+  discarded the compile log + parsed errors
+- FIXED in patch 0002 (awaiting relay): no .gitattributes — Windows CRLF churn
+  marked all 66 tracked files modified (8260+/8260-, no content change), which
+  is what kept the cv_builder_src gitlink permanently dirty
+- NEW: `app.log` is tracked in CV_BUILDER; should be gitignored
 - CV_BUILDER: `getTemplateConcatenated` picks a `sample.tex`/`main.tex`/etc as the "main" file per template — confirm this always matches what CV_BRAIN's `TEMPLATE_REGISTRY` assumes for each of the 8 templates (not verified against a live server in this session, only read statically).
 - CV_BRAIN: apply the 2 patches in `kb/relay/cv_brain-achievements-patch/` and run `uv sync` (new `langchain-openai` dependency).

@@ -182,6 +182,7 @@ INSTRUCTIONS FOR FINAL OUTPUT:
 Fill in the template with the candidate's data now.
 - Every single section must contain real candidate data.
 - Replace every placeholder name, institution, job title, project name, bullet point, and tech skill.
+- Every project entry needs 4+ bullets: 1 dedicated "Tech Stack: ..." bullet FIRST, then AT LEAST 3 more bullets describing what it does, key features, and impact (see rules 11a/11b). A project with fewer than 3 description bullets, or no separate tech-stack line, will be rejected.
 - Return the COMPLETE LaTeX document from \\documentclass to \\end{{document}}.
 - Do NOT truncate or cut off the output. Do NOT include markdown code fences (```) or conversational response text.
 """

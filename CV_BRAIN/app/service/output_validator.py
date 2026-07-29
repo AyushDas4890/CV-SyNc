@@ -67,6 +67,68 @@ def _check_has_bullet_content(tex: str) -> bool:
     return total_bullets >= 3  # at least 3 meaningful bullets in the whole resume
 
 
+_PROJECT_HEADING_PATTERN = (
+    r"(\\resumeProjectHeading\{|\\resumeSubheading\{|\\cventry\{"
+    r"|\\cvevent\{|\\runsubsection\{|\\headerrow\{)"
+)
+_PROJECT_BULLET_PATTERN = re.compile(
+    r"\\resumeItem\{|\\item\{|\\item\s|\\cvitem\{|\\cvlistitem\{"
+)
+_TECH_STACK_LINE_PATTERN = re.compile(
+    r"tech(?:nical)?\s*stack|technologies\s*used|built\s*with", re.IGNORECASE
+)
+
+
+def _extract_projects_section(tex: str) -> str:
+    """Return the substring of the document covering the Projects section only."""
+    section_start_pattern = re.compile(
+        r"\\(?:section\*?|cvsection|subsection\*?)\{[^{}]*"
+        r"(?:Projects?|Personal Projects|Selected Projects)[^{}]*\}",
+        re.IGNORECASE,
+    )
+    start_match = section_start_pattern.search(tex)
+    if not start_match:
+        return ""
+
+    next_section_pattern = re.compile(r"\\(?:section\*?|cvsection|subsection\*?)\{")
+    end_match = next_section_pattern.search(tex, start_match.end())
+    end_idx = end_match.start() if end_match else tex.find(r"\end{document}")
+    if end_idx < 0:
+        end_idx = len(tex)
+
+    return tex[start_match.end():end_idx]
+
+
+def _split_project_entries(projects_text: str) -> list:
+    """Split the Projects section into per-project chunks by heading macro."""
+    if not projects_text:
+        return []
+    positions = [m.start() for m in re.finditer(_PROJECT_HEADING_PATTERN, projects_text)]
+    if not positions:
+        return []
+    positions.append(len(projects_text))
+    return [
+        projects_text[positions[i]:positions[i + 1]]
+        for i in range(len(positions) - 1)
+    ]
+
+
+def _check_min_bullets_per_project(tex: str) -> bool:
+    """Every detected project entry must have at least 3 description bullets."""
+    entries = _split_project_entries(_extract_projects_section(tex))
+    if not entries:
+        return True  # structure not detectable — don't false-positive block on this
+    return all(len(_PROJECT_BULLET_PATTERN.findall(entry)) >= 3 for entry in entries)
+
+
+def _check_tech_stack_line_per_project(tex: str) -> bool:
+    """Every detected project entry must mention its tech stack on its own line."""
+    entries = _split_project_entries(_extract_projects_section(tex))
+    if not entries:
+        return True
+    return all(_TECH_STACK_LINE_PATTERN.search(entry) for entry in entries)
+
+
 def validate_output(
     tex: str,
     user_profile: UserProfile,
@@ -83,6 +145,7 @@ def validate_output(
     - All applicable sections exist
     - Minimum content line count (for full page)
     - Has meaningful bullet content
+    - Each project has at least 3 description bullets plus a dedicated tech-stack line
     
     Returns a ValidationResult with pass/fail and list of failures.
     """
@@ -108,7 +171,9 @@ def validate_output(
 
     # Check for placeholder leak (template echo instead of substitution)
     checks["no_placeholder_leak"] = True
-    user_profile_str = json.dumps(user_profile.dict()).lower()
+    # .dict() is deprecated in pydantic v2 (which langchain pulls in) and is
+    # slated for removal; model_dump() is the supported equivalent.
+    user_profile_str = json.dumps(user_profile.model_dump()).lower()
     known_placeholders = [
         "jake ryan", "sourabh bajaj", "southwestern university", "blinn college",
         "gitlytics", "simple paintball", "texas a&m university", "texas a\\&m university",
@@ -156,6 +221,8 @@ def validate_output(
     checks["min_content_lines"] = content_lines >= 30
 
     checks["has_bullet_content"] = _check_has_bullet_content(tex)
+    checks["min_bullets_per_project"] = _check_min_bullets_per_project(tex)
+    checks["tech_stack_line_per_project"] = _check_tech_stack_line_per_project(tex)
 
     # ── Aggregate result ──────────────────────────────────────────────────
     passed = all(checks.values())

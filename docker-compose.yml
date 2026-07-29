@@ -1,9 +1,16 @@
+# Local / default stack. For production, layer the override on top:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   cv-builder:
     build:
@@ -14,6 +21,12 @@ services:
       PORT: 3000
       logger_level: info
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   cv-brain:
     build:
@@ -28,9 +41,20 @@ services:
       GROQ_TEMPERATURE: ${GROQ_TEMPERATURE:-0.1}
       GROQ_MAX_TOKENS: ${GROQ_MAX_TOKENS:-8192}
       CV_BUILDER_URL: http://cv-builder:3000
+      # CORS allowlist — /api/generate-cv spends LLM credits, so it must not
+      # be callable from arbitrary origins.
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
     depends_on:
-      - cv-builder
+      cv-builder:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   auth-service:
     build:
@@ -42,28 +66,44 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost:4000/api/auth/github/callback}
-      GITHUB_OAUTH_SCOPE: ${GITHUB_OAUTH_SCOPE:-public_repo}
+      # read:user is enough to identify the user and list public repos.
+      # public_repo is a WRITE scope — it grants push access to every public
+      # repo the user owns, which this app never needs.
+      GITHUB_OAUTH_SCOPE: ${GITHUB_OAUTH_SCOPE:-read:user}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:4000/api/auth/google/callback}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       USE_REDIS: "true"
       REDIS_URL: redis://redis:6379
-      SESSION_SECRET: ${SESSION_SECRET:-change-me}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   frontend:
     build:
       context: ./frontend
+      # Vite bakes VITE_* into the bundle at build time, so these have to be
+      # build args. Passing them as `environment:` does nothing.
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:4000}
+        VITE_LLM_BRAIN_URL: ${VITE_LLM_BRAIN_URL:-http://localhost:8000}
+        VITE_CV_BUILDER_URL: ${VITE_CV_BUILDER_URL:-http://localhost:3000}
     ports:
       - "5173:5173"
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:4000}
     depends_on:
-      - auth-service
-      - cv-brain
+      auth-service:
+        condition: service_healthy
+      cv-brain:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

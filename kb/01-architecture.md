@@ -34,6 +34,8 @@ Contracts (as actually implemented):
 
 Known gap vs. the original design principle below: no diff/approve gate exists on this path — CV_BRAIN generates the full tex directly and it goes straight to compile. Not built, not forgotten — see 07-decisions.md OPEN section.
 
+Bullet/tech-stack rule (2026-07-29): every project entry must have 4+ bullets — one dedicated `Tech Stack: ...` bullet first, then 3+ description bullets (feature/architecture/impact). Enforced in `CV_BRAIN/app/prompts/system_prompt.py` (rules 11a/11b, 14) and `CV_BRAIN/app/prompts/user_prompt.py`, and actually checked (not just prompted) by `CV_BRAIN/app/service/output_validator.py` (`_check_min_bullets_per_project`, `_check_tech_stack_line_per_project`) — a failing project entry triggers the existing one-shot retry-with-feedback loop in `latex_generator_services.py`.
+
 ---
 
 ## Original design (2026-07 initial planning, NOT what shipped)
@@ -53,6 +55,12 @@ Contracts (never implemented):
 [{"title":"...","tech_stack":["..."],"bullets":["..."],"repo_url":"...","dates":"..."}]
 ```
 2. writer API (planned, never built): POST /api/write {projects} (?dry=true → diff only), POST /api/approve → compile + snapshot.
+
+Infra REVISED 2026-07-29 — see 08-bugfix-deploy-2026-07-29.md. Base
+`docker-compose.yml` is now the LOCAL stack (healthchecks + ordered startup,
+frontend built as a static nginx image rather than the Vite dev server, `VITE_*`
+passed as build args). Production layers `docker-compose.prod.yml` on top and
+requires a TLS-terminating proxy in front.
 
 Infra (containerised, working as of 2026-07-27): `docker-compose.yml` at repo root orchestrates 5 services:
   - `redis` (redis:7-alpine) — session store for auth-service

@@ -1,0 +1,32 @@
+# Production overlay. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Assumes a TLS-terminating reverse proxy sits in front of the published
+# ports. NODE_ENV=production turns on secure cookies, which the browser will
+# only send over HTTPS — plain HTTP will appear to "log in and immediately
+# log out". Terminate TLS before going live.
+services:
+  cv-builder:
+    environment:
+      logger_level: warn
+    ports: []
+
+  cv-brain:
+    environment:
+      ENV: production
+      # Must be the public HTTPS origin of the frontend.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?set ALLOWED_ORIGINS to your frontend origin}
+    ports: []
+
+  auth-service:
+    environment:
+      NODE_ENV: production
+      # env.js refuses to boot if these are missing or left at defaults.
+      SESSION_SECRET: ${SESSION_SECRET:?set a strong random SESSION_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?required}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?required}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:?required}
+      FRONTEND_URL: ${FRONTEND_URL:?required}
+      # Set to "none" only if the frontend is on a different registrable
+      # domain than this API. Requires HTTPS.
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}

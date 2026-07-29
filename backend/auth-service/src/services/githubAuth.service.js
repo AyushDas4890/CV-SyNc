@@ -3,8 +3,24 @@ const crypto = require("crypto");
 const https = require("https");
 const config = require("../config/env");
 
+// TLS verification is ON by default. The previous expression
+// (`process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0" && false`) always
+// evaluated to false, silently disabling cert checks on the OAuth token
+// exchange — that leaks the client secret and user access tokens to any
+// MITM. Behind a corporate SSL-inspection proxy, prefer NODE_EXTRA_CA_CERTS
+// pointing at the proxy's CA; ALLOW_INSECURE_TLS=true is a last-resort
+// local-dev escape hatch and is refused in production.
+const allowInsecureTls =
+  process.env.ALLOW_INSECURE_TLS === "true" && process.env.NODE_ENV !== "production";
+
+if (allowInsecureTls) {
+  console.warn(
+    "[github] ALLOW_INSECURE_TLS=true — TLS certificate verification is DISABLED. Never use this outside local development."
+  );
+}
+
 const httpsAgent = new https.Agent({
-  rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0" && false, // relaxed for corporate/proxy SSL inspection
+  rejectUnauthorized: !allowInsecureTls,
 });
 
 const AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
@@ -86,7 +102,9 @@ async function fetchUserRepos(token, { page = 1, perPage = 30 } = {}) {
 // drop it into the payload without special-casing.
 async function fetchRepoReadme(token, owner, repo) {
   try {
-    const res = await axios.get(`${API_BASE}/repos/${owner}/${repo}/readme`, {
+    const safeOwner = encodeURIComponent(owner);
+    const safeRepo = encodeURIComponent(repo);
+    const res = await axios.get(`${API_BASE}/repos/${safeOwner}/${safeRepo}/readme`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github.raw+json",

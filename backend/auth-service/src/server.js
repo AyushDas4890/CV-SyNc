@@ -5,8 +5,19 @@ const config = require("./config/env");
 const githubAuthRoutes = require("./routes/githubAuth.routes");
 const profileRoutes    = require("./routes/profile.routes");
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const app = express();
-app.use(express.json());
+
+// Behind a reverse proxy (nginx, Render, Fly, ALB), express-session checks
+// req.secure before setting a `secure` cookie. Without trust proxy that is
+// always false on the app's plain-HTTP hop, so the session cookie is never
+// issued and login silently fails in production.
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
+app.use(express.json({ limit: "1mb" }));
 
 app.use(
   cors({
@@ -46,8 +57,19 @@ async function startServer() {
       sessionStore = new RedisStore({ client: redisClient });
       console.log("[redis] Connected to Redis session store");
     } catch (err) {
+      // Falling back to MemoryStore in production leaks memory, drops every
+      // session on restart, and breaks entirely across multiple instances.
+      // Fail loudly instead of quietly degrading.
+      if (isProduction) {
+        console.error("[redis] Connection failed in production:", err.message);
+        console.error("[redis] Refusing to fall back to MemoryStore. Fix REDIS_URL and restart.");
+        process.exit(1);
+      }
       console.warn("[redis] Connection failed — using MemoryStore fallback.");
     }
+  } else if (isProduction) {
+    console.error("[session] USE_REDIS must be 'true' in production — MemoryStore is not a production session store. Refusing to start.");
+    process.exit(1);
   } else {
     console.log("[session] Using MemoryStore for development.");
   }
@@ -60,14 +82,17 @@ async function startServer() {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: isProduction,
+        // "lax" only works when the frontend and this API share a registrable
+        // domain. If they're deployed on different sites, set
+        // COOKIE_SAMESITE=none (which requires secure:true, i.e. HTTPS).
+        sameSite: process.env.COOKIE_SAMESITE || "lax",
         maxAge: 1000 * 60 * 60 * 24, // 24h
       },
     })
   );
 
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProduction) {
     app.post("/dev/login", (req, res) => {
       req.session.userId = req.body.userId || "dev-user-1";
       res.json({ ok: true, userId: req.session.userId });

@@ -2,6 +2,8 @@
 API routes for LLM_BRAIN CV generation service.
 """
 
+import traceback
+
 from fastapi import APIRouter, HTTPException
 import httpx
 
@@ -63,12 +65,18 @@ async def generate_cv_endpoint(req: GenerateCvRequest):
     except ValueError as ve:
         print(f"[LLM_BRAIN] ValueError: {ve}")
         raise HTTPException(status_code=400, detail=str(ve))
-    except httpx.HTTPStatusError as he:
-        print(f"[LLM_BRAIN] CV_BUILDER HTTP error: {he}")
+    except (httpx.HTTPStatusError, httpx.RequestError) as he:
+        print(f"[LLM_BRAIN] CV_BUILDER request error: {type(he).__name__}: {he}")
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to fetch template from CV_BUILDER: {he}",
+            detail="Failed to fetch the LaTeX template from CV_BUILDER. Is the compiler service reachable?",
         )
     except Exception as err:
-        print(f"[LLM_BRAIN] Exception: {err}")
-        raise HTTPException(status_code=500, detail=str(err))
+        # Don't echo raw internals to the client — they can carry API keys,
+        # internal URLs and stack detail. Log fully, return a generic message.
+        traceback.print_exc()
+        print(f"[LLM_BRAIN] Unhandled exception: {type(err).__name__}: {err}")
+        raise HTTPException(
+            status_code=500,
+            detail="CV generation failed due to an internal error. Check the CV_BRAIN service logs.",
+        )

@@ -69,13 +69,18 @@ COMPLETENESS RULES — CRITICAL (READ CAREFULLY)
 
 11. **BULLET POINT DENSITY**: Use 3-4 bullet points per experience/project entry. Each bullet point should describe a concrete achievement, technology used, or impact. Single-word or single-phrase bullets are NOT acceptable.
 
+11a. **PROJECT BULLET MINIMUM (STRICT, NON-NEGOTIABLE)**: Every single project entry MUST have AT LEAST 3 separate bullet points (using the template's bullet macro, e.g. \\resumeItem{{...}}, \\item{{...}}, \\cvitem{{...}}). A project with only 1 or 2 bullets is a VALIDATION FAILURE. Each bullet must be a full sentence/clause (1-2 lines), describing a distinct aspect: what the project does, a specific feature or architectural detail, and a measurable outcome/impact/scale. Never collapse a project down to a single one-line summary.
+
+11b. **TECH STACK ON ITS OWN LINE (REQUIRED)**: In addition to the 3+ description bullets above, every project entry MUST include ONE dedicated bullet, placed FIRST in that project's bullet list, that states the tech stack ONLY — formatted as \\resumeItem{{\\textbf{{Tech Stack:}} React, Node.js, MongoDB, Docker}} (adapt the bold/label syntax to the template's bullet macro). This tech-stack line is separate from — and in addition to — the 3+ substantive description bullets; it does not count toward the minimum of 3. So every project entry has 4+ bullets total: 1 tech-stack line + 3+ description bullets. Still also put the tech stack in the project heading (Rule 14) where the template supports it — the dedicated bullet line is required regardless.
+
 12. **SECTION ORDER & BALANCE**: Arrange sections to fill the page naturally. Do not cluster all content at the top with empty space at the bottom. Use the RECOMMENDED SECTION ORDER from the template rules above.
 
 13. **COMPLETE DOCUMENT — NO TRUNCATION**: Your output MUST start with \\documentclass (or % comment) and MUST end with \\end{{document}}. If your output is cut off mid-document, the resume WILL FAIL to compile. Budget your response to include the FULL document. Never stop mid-section.
 
 14. **PROJECTS FROM REPOSITORIES**: For each selected GitHub repository, create a project entry with:
-    - Project name and tech stack from the repo metadata
-    - 3-4 bullet points describing what the project does, key features, and technologies used
+    - Project name and tech stack from the repo metadata (in the heading, per the template's project-heading macro)
+    - A dedicated first bullet stating the tech stack (see Rule 11b)
+    - AT LEAST 3 additional bullet points describing what the project does, key features, and technical/architectural details or impact (see Rule 11a) — 4+ bullets total per project
     - Pull details from the README excerpt, commit messages, file tree, and manifests
     - If the user provided performance notes for a repo, incorporate them into the bullets
 

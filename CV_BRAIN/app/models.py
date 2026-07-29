@@ -1,9 +1,8 @@
 """
 Pydantic models for LLM_BRAIN API requests and responses.
 """
-import re
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ── User Profile Models ──────────────────────────────────────────────────────
@@ -49,6 +48,11 @@ class UserProfile(BaseModel):
 # ── Repository Detail Model ──────────────────────────────────────────────────
 
 class RepoDetail(BaseModel):
+    # Accept either the alias (full_name, readme_content, ...) or the field
+    # name (fullName, readmeContent). Without this, a caller sending camelCase
+    # gets the field silently dropped to its default instead of an error.
+    model_config = ConfigDict(populate_by_name=True)
+
     id: Optional[Any] = None
     name: Optional[str] = ""
     fullName: Optional[str] = Field(default="", alias="full_name")

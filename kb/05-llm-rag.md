@@ -4,6 +4,8 @@ Fetch: GitHub API per tagged repo → README, languages, topics → data/raw/. V
 
 Summarize: OpenAI (gpt-4o-mini default) → projects.json. Rules: 2-3 action-verb bullets/project, MUST weave user `notes` metrics (accuracy, latency, users — git data lacks these). Invalid JSON → 1 retry → skip repo with warning. Output JSON ONLY, never LaTeX (renderer owns tex).
 
+NOTE: this whole section describes the original never-built writer-service design (see 01-architecture.md). What actually ships (CV_BRAIN filling LaTeX directly) uses a stricter bullet rule: 4+ bullets/project — 1 dedicated tech-stack bullet + 3+ description bullets — enforced by `output_validator.py`, not 2-3 generic bullets.
+
 RAG (= retrieval into prompt, NOT fine-tuning):
 | Corpus | Size | Method |
 |---|---|---|

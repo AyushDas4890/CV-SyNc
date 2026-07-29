@@ -19,7 +19,7 @@ export default function GithubConnectPage() {
   async function load() {
     try {
       const me = await api.me();
-      setUsername(me.githubUsername);
+      setUsername(me.githubUsername || me.displayName || me.email || "");
       const res = await api.githubRepos();
       const fetched = res.repos || [];
       setRepos(fetched);

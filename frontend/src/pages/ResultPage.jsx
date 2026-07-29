@@ -17,7 +17,9 @@ export default function ResultPage() {
 
   useEffect(() => {
     api.me()
-      .then((res) => setUsername(res.githubUsername))
+      // Email/Google users have no githubUsername — fall back so the
+      // LogoutBar isn't blank for them.
+      .then((res) => setUsername(res.githubUsername || res.displayName || res.email || ""))
       .catch(() => navigate("/auth"));
 
     const cached = localStorage.getItem("cv_sync_generated_cv");

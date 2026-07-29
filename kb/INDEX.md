@@ -13,6 +13,13 @@ Style: caveman-compressed. All technical substance intact.
 | 05-llm-rag.md | historical: original standalone fetch+LLM/RAG design — superseded by CV_BRAIN, which does this differently | understanding what was originally planned |
 | 06-build-plan.md | phased steps + pass checks + what's been built | deciding what next |
 | 07-decisions.md | locked decisions + open questions + CV_BRAIN wiring notes | before proposing changes |
+| 08-bugfix-deploy-2026-07-29.md | full-repo bug sweep + deployment hardening: security fixes, prod compose overlay, what's verified, what's still OPEN | deploying, or before touching auth/CORS/Docker |
+
+Deployment (2026-07-29): base `docker-compose.yml` = local dev stack. Production =
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`,
+which needs a TLS-terminating reverse proxy in front (secure cookies) and refuses
+to start without real secrets. Frontend image is now an nginx static build, not
+the Vite dev server. Full detail + remaining gaps in 08-bugfix-deploy-2026-07-29.md.
 
 Canvas files (visual, in parent folder): session-auth-corrected, project-layout-build-order, document-half-v3 (v1/v2 superseded — NOTE: all document-half canvases show old docx plan, superseded by .tex plan, see 07-decisions).
 

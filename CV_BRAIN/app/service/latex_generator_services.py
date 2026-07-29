@@ -11,6 +11,7 @@ Flow:
   7. Return final .tex + engine info
 """
 
+import anyio.to_thread
 import httpx
 from typing import List, Optional
 
@@ -102,8 +103,13 @@ def _call_openai(system_prompt: str, user_prompt: str) -> str:
     print(f"[LLM_BRAIN] Prompt size: {total_chars} chars (~{total_chars // 4} tokens est)")
     if total_chars > MAX_PROMPT_CHARS:
         print(f"[LLM_BRAIN] WARNING: Prompt exceeds {MAX_PROMPT_CHARS} chars, truncating user_prompt.")
-        overflow = total_chars - MAX_PROMPT_CHARS
-        user_prompt = user_prompt[:-overflow]
+        # Keep at least 10k chars of user prompt. The old `user_prompt[:-overflow]`
+        # silently produced an EMPTY prompt whenever the overflow was >= the user
+        # prompt length (large system prompt / huge template), which made the LLM
+        # return garbage for no visible reason.
+        keep = max(10_000, MAX_PROMPT_CHARS - len(system_prompt))
+        user_prompt = user_prompt[:keep]
+        print(f"[LLM_BRAIN] user_prompt truncated to {len(user_prompt)} chars.")
 
     try:
         # NOTE: was importing from langchain_community.chat_models, which is both the
@@ -168,6 +174,18 @@ def call_llm(system_prompt: str, user_prompt: str) -> str:
     return ""
 
 
+async def call_llm_async(system_prompt: str, user_prompt: str) -> str:
+    """
+    Await `call_llm` on a worker thread.
+
+    LangChain's `.invoke()` is blocking. Calling it directly from the async
+    request handler pins the event loop for the entire LLM round-trip (tens of
+    seconds), so every other request — including /health — stalls behind a
+    single CV generation. Off-loading to a thread keeps the server responsive.
+    """
+    return await anyio.to_thread.run_sync(call_llm, system_prompt, user_prompt)
+
+
 def strip_latex_comments(tex: str) -> str:
     """Remove comments from LaTeX code to save tokens."""
     import re
@@ -230,7 +248,7 @@ async def generate_cv(
     )
 
     # ── Step 4: Call LLM (attempt 1) ──────────────────────────────────────
-    edited_tex = call_llm(system_prompt, user_prompt)
+    edited_tex = await call_llm_async(system_prompt, user_prompt)
 
     # DEBUG: dump the raw section headers the LLM produced, to diagnose validation
     import re as _re
@@ -260,7 +278,7 @@ async def generate_cv(
                 f"Make sure the resume fills a full page with substantial content.\n\n"
                 f"{user_prompt}"
             )
-            retry_tex = call_llm(system_prompt, retry_prompt)
+            retry_tex = await call_llm_async(system_prompt, retry_prompt)
             if _has_valid_tex(retry_tex):
                 retry_validation = validate_output(
                     retry_tex, user_profile, has_experience, has_education

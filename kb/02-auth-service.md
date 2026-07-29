@@ -23,6 +23,19 @@ Session-based. In-memory `userStore.service.js` for now (TODO: MySQL `users` tab
 
 ## Session rules
 - Cookie: opaque session_id only. HttpOnly, Secure (prod), SameSite=Lax
+  (override with `COOKIE_SAMESITE=none` if frontend and API are on different
+  registrable domains — requires HTTPS)
+- `trust proxy` is set when NODE_ENV=production; without it a TLS-terminating
+  reverse proxy makes `req.secure` false and the session cookie is never issued
+- In production the service REFUSES TO START unless: SESSION_SECRET is set and
+  not a placeholder, GITHUB_CLIENT_ID/SECRET/CALLBACK_URL + FRONTEND_URL are
+  set, and USE_REDIS=true with Redis actually reachable (no MemoryStore
+  fallback in prod). See 08-bugfix-deploy-2026-07-29.md.
+- GITHUB_OAUTH_SCOPE default is now `read:user` — `public_repo` was a WRITE
+  scope granting push access to all the user's public repos, never needed here.
+- TLS cert verification on GitHub calls is ON. `ALLOW_INSECURE_TLS=true` is a
+  local-dev-only escape hatch and is ignored in production; prefer
+  NODE_EXTRA_CA_CERTS behind an SSL-inspection proxy.
 - `session.regenerate()` called on login (session fixation prevention)
 - Logout: `session.destroy()` + cookie cleared
 - 24h maxAge cookie

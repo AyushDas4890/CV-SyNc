@@ -43,6 +43,27 @@ Full path now works: Profile/Experience/GitHub/Template pages -> `frontend/src/a
 - `ENV UV_SYSTEM_CERTS=1` + pip `--trusted-host pypi.org --trusted-host files.pythonhosted.org`: required for builds behind SSL-inspection firewalls (Sophos, Zscaler, etc.) that replace TLS certs with their own CA. `UV_SYSTEM_CERTS` (replaces deprecated `UV_NATIVE_TLS`) tells `uv` to use OpenSSL + system CA bundle instead of bundled rustls certs.
 - Docker Compose `--no-build` is the safe startup if images are already built. `docker compose build` will fail behind Sophos because BuildKit's metadata check on `auth.docker.io` gets intercepted. Workaround: build with `docker build -f Dockerfile.patch` using the existing cached image as base, or disable Sophos for Docker Desktop.
 
+## LOCKED (2026-07-29 — bug sweep / deployment hardening)
+- CV_BRAIN CORS is an ALLOWLIST (`ALLOWED_ORIGINS`), never `*`. `/api/generate-cv`
+  spends LLM credits, so a wildcard lets any site drive it from a visitor's browser.
+- CV_BRAIN's blocking LangChain `.invoke()` must always be called through
+  `call_llm_async()` (`anyio.to_thread.run_sync`). Calling `call_llm()` directly
+  from an async handler stalls the whole event loop for the LLM round-trip.
+- Frontend Docker image = static nginx build, NOT the Vite dev server.
+  `VITE_*` are BUILD args (Vite inlines them at build time); passing them as
+  runtime `environment:` does nothing.
+- Production runs via the `docker-compose.prod.yml` overlay and requires a
+  TLS-terminating reverse proxy in front (secure cookies).
+- Full findings list, verification evidence, and remaining gaps:
+  08-bugfix-deploy-2026-07-29.md.
+
+## OPEN (added 2026-07-29, blocks real production)
+- In-memory `userStore` means users/tokens/profiles vanish on restart and can't
+  be shared across replicas — the app is effectively single-instance until the
+  MySQL `users` table lands. Biggest production blocker.
+- No rate limit on `/api/auth/email/login` (brute-forceable). Fix needs the
+  `express-rate-limit` dependency — awaiting your go-ahead.
+
 ## TEAMMATE RELAY (pending)
 - CV_BUILDER: timeout code 15s vs README 30s
 - CV_BUILDER: PORT no fallback in server.config.js

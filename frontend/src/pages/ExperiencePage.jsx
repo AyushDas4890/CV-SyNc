@@ -12,7 +12,7 @@ export default function ExperiencePage() {
 
   useEffect(() => {
     api.me()
-      .then((res) => setUsername(res.githubUsername))
+      .then((res) => setUsername(res.githubUsername || res.displayName || res.email || ""))
       .catch(() => navigate("/auth"));
 
     try {

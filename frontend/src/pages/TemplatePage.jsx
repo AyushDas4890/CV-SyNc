@@ -47,7 +47,7 @@ export default function TemplatePage() {
 
   useEffect(() => {
     api.me()
-      .then((res) => setUsername(res.githubUsername))
+      .then((res) => setUsername(res.githubUsername || res.displayName || res.email || ""))
       .catch(() => navigate("/auth"));
 
     fetch("/template-previews/manifest.json")

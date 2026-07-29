@@ -16,8 +16,29 @@ router = APIRouter()
 
 @router.get("/health")
 def health():
-    """Health check endpoint."""
-    return {"ok": True, "service": "LLM Brain"}
+    """
+    Health check.
+
+    Reports which refinement features the RUNNING build has, so it is possible
+    to tell at a glance whether a deployed service actually picked up a change
+    rather than still running an older image.
+    """
+    from app.config.serverConfig import Server_Credentials
+    from app.service.page_metrics import ALLOWED_LENGTHS
+
+    cfg = Server_Credentials()
+    return {
+        "ok": True,
+        "service": "LLM Brain",
+        "build": "2026-07-29-arity-gate-v2",
+        "features": {
+            "macro_arity_gate": True,
+            "macro_arity_final_gate": True,
+            "structure_review": bool(cfg.get("ENABLE_STRUCTURE_REVIEW")),
+            "page_fit": bool(cfg.get("ENABLE_PAGE_FIT")),
+            "page_bands": list(ALLOWED_LENGTHS),
+        },
+    }
 
 
 @router.get("/api/templates")

@@ -378,6 +378,7 @@ async def fit_to_page_target(
     a warning rather than failing, since a slightly-off CV beats no CV.
     """
     warnings: List[str] = []
+    template_arity = extract_macro_arity(template_tex)
     target = None if target_pages in ("auto", None) else float(target_pages)
     max_attempts = int(config.get("PAGE_FIT_MAX_ATTEMPTS", 3))
     timeout = float(config.get("PAGE_FIT_COMPILE_TIMEOUT", 120))
@@ -454,7 +455,33 @@ async def fit_to_page_target(
             print("[LLM_BRAIN] Page fit: adjustment returned no valid LaTeX — stopping")
             warnings.append("page fitting stopped: adjustment produced invalid LaTeX")
             break
-        current_tex = _finalize(adjusted, template_tex)
+
+        candidate = _finalize(adjusted, template_tex)
+
+        # A page-fit pass rewrites the WHOLE document, so it can reintroduce a
+        # wrong-arity macro call that the step-8b gate already fixed — which is
+        # exactly how a "Missing number, treated as zero" reappeared after the
+        # arity gate was added. Re-check, repair, and refuse the adjustment
+        # outright if it is still broken: a correctly-sized document that does
+        # not compile is worth less than a slightly mis-sized one that does.
+        if template_arity:
+            bad = check_macro_calls(candidate, template_arity)
+            if bad:
+                print(
+                    f"[LLM_BRAIN] Page fit: adjustment introduced {len(bad)} bad macro "
+                    "call(s) — repairing"
+                )
+                candidate, still_bad = await enforce_macro_arity(
+                    candidate, template_tex, template_id, max_attempts=1
+                )
+                if still_bad:
+                    print("[LLM_BRAIN] Page fit: adjustment still broken — discarding it")
+                    warnings.append(
+                        "page fitting stopped: an adjustment broke macro arity and was discarded"
+                    )
+                    break
+
+        current_tex = candidate
 
     if best["metrics"] is not None and not (best["fit"] or {}).get("ok"):
         warnings.append(
@@ -660,6 +687,27 @@ async def generate_cv(
         page_fit = fit_result["fit"]
         warnings.extend(fit_result["warnings"])
 
+    # ── Step 11: FINAL macro arity gate ───────────────────────────────────
+    # Steps 9 and 10 both hand the whole document back to the LLM to rewrite,
+    # so either can reintroduce a wrong-arity call that step 8b already fixed.
+    # This is the last thing to touch the tex before it is returned, so nothing
+    # reaches the compiler unchecked.
+    edited_tex, final_arity_problems = await enforce_macro_arity(
+        edited_tex, template_tex, template_id
+    )
+    if final_arity_problems:
+        warnings.append(
+            f"{len(final_arity_problems)} macro call(s) still have the wrong argument "
+            "count after refinement and will likely fail to compile: "
+            + "; ".join(
+                f"\\{p['macro']} (line {p['line']}) needs {p['expected']}, got {p['found']}"
+                for p in final_arity_problems[:5]
+            )
+        )
+    elif arity_problems:
+        # 8b couldn't fix it but a later pass happened to.
+        warnings = [w for w in warnings if "wrong argument count" not in w]
+
     # ── Logging ───────────────────────────────────────────────────────────
     lines = edited_tex.split('\n')
     print(f"[LLM_BRAIN] Final TeX: {len(lines)} lines, {len(edited_tex)} chars")
@@ -674,6 +722,9 @@ async def generate_cv(
         f"Has \\begin{{document}}: {has_begindoc}, "
         f"Has \\end{{document}}: {has_enddoc}"
     )
+
+    # The refinement loop can emit the same note once per attempt.
+    warnings = list(dict.fromkeys(warnings))
 
     if page_metrics is not None:
         summary = (

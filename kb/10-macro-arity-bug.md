@@ -151,6 +151,49 @@ The reported failing document — unescaped `&` in a macro argument, plus the
 label-colon and arity mistakes — now compiles to 1 page with `Q&A` and `R&D`
 rendered correctly and no doubled colon.
 
+---
+
+# The arity gate had a hole (2026-07-29, third failure)
+
+The same "Missing number, treated as zero" on Anubhav came back **after** the
+arity gate was added. The gate itself was fine; the pipeline order was not.
+
+```
+step 8b  arity gate            <- fixes wrong-arity calls
+step 9   structure review/repair  <- LLM rewrites the WHOLE document
+step 10  page fit                 <- LLM rewrites the WHOLE document, up to 3x
+         (nothing re-checked arity afterwards)
+```
+
+Both later steps hand the entire document back to the model. A condense pass
+rewriting every bullet can trivially drop a second argument, and the result
+went straight to the compiler unchecked.
+
+Fixes:
+- **Page-fit adjustments are validated.** If an adjustment introduces a bad
+  call, it is repaired; if it is still broken, the adjustment is **discarded**
+  and the loop stops. A correctly-sized document that doesn't compile is worth
+  less than a slightly mis-sized one that does.
+- **Final arity gate (step 11)** after all LLM rewrites — the last thing to
+  touch the tex before it is returned.
+
+Verified by driving the full pipeline with a page-fit pass that deliberately
+returns a one-argument `\resumeItem` on every call: no wrong-arity call escapes.
+
+## Checking WHICH build is running
+
+`GET /health` now reports it:
+
+```json
+{"build": "2026-07-29-arity-gate-v2",
+ "features": {"macro_arity_gate": true, "macro_arity_final_gate": true,
+              "page_fit": true, "page_bands": [1.0, 2.0]}}
+```
+
+If a fix appears not to have taken effect, check this first — a stale container
+or an unrestarted `uvicorn` looks exactly like a failed fix. The ResultPage also
+now shows measured page length, which is absent on older frontend builds.
+
 ## If a compile fails again
 
 1. Check `LaTeX Warning: Unused global option(s)` — identifies the template.

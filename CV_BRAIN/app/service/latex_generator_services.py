@@ -28,7 +28,7 @@ from app.service.latex_sanitizer import (
 )
 from app.service.output_validator import validate_output
 from app.service.compile_client import compile_tex
-from app.service.page_metrics import measure_pdf, classify
+from app.service.page_metrics import measure_pdf, classify, expected_pages
 from app.service.structure_reviewer import build_review_call, parse_review
 from app.prompts.review_prompts import (
     build_structure_repair_prompt,
@@ -439,6 +439,9 @@ async def fit_to_page_target(
             delta=fit["delta"],
             generated_tex=current_tex,
             template_tex=template_tex,
+            pages=metrics.pages,
+            expected=expected_pages(fit["band"]),
+            last_page_fill=metrics.fill_ratio,
         )
         system_prompt = build_system_prompt(
             template_id=template_id,

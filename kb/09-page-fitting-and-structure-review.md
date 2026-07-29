@@ -142,8 +142,56 @@ without it 1.5-page detection is impossible (page count alone can't distinguish
   `3`/`1.7`/`"banana"` → 422.
 - Full `generate_cv` orchestration with stubbed LLM + compiler.
 
-**Not verified**: a real end-to-end run against live LLM APIs and a real
-LaTeX compile — no API keys and no TeX install in this session. The tuning
-constants (`BAND_TOLERANCE`, the margin assumption, `LINES_PER_PAGE = 45` used
-to convert a page delta into a line budget) are reasoned estimates and may need
-adjusting against real compiled output.
+## VERIFIED AGAINST REAL LaTeX (2026-07-29, third pass)
+
+TeX Live is present in the dev sandbox, so the loop was finally exercised
+against real `latexmk` output instead of synthetic PDFs. Two real bugs surfaced
+that synthetic tests could never have caught.
+
+### Bug 1 — one stray glyph made every page measure as 100% full
+
+Jake's template renders a `$|$` separator whose text matrix reports **y = 0**:
+a 2-character speck at the very bottom of the page. `_fill_ratio_from_page`
+took the minimum baseline over all text runs, so that speck made page 1 look
+full to the bottom edge. Every real template measured exactly `fill = 1.00`.
+
+Fixes:
+- ignore baselines carrying fewer than `_MIN_BASELINE_CHARS` (3) characters;
+- drop an isolated lowest baseline when it sits >15% of page height below the
+  next one up and carries <2% of the page's text;
+- derive the top reference from the **actual first line of text** and infer the
+  bottom margin from it, instead of assuming a fixed 10%-capped margin. Real
+  top margins measured 52pt (Jake, letter) vs 51pt (Anubhav, A4) with very
+  different page heights, so a fixed fraction was never going to fit all eight.
+
+Jake's sample now measures a believable **0.93**, not 1.00.
+
+### Bug 2 — the condense budget was far too small for overflow
+
+Measured, not theorised: a document at **1.11 pages** was told to remove
+`delta x 45 ≈ 5 lines`. Doing exactly that produced **1.06 pages — still two
+pages**. Removing a page means freeing as much vertical space as that page's
+content *plus* the section headings and list environments around it. Cutting
+the whole spilled Certifications block (~4 lines incl. heading) reached 1 page;
+tightening wording never would.
+
+`build_page_fit_prompt` now takes `pages`/`expected`/`last_page_fill` and, when
+overflowing, budgets `last_page_fill x 45 + 4` lines and tells the LLM
+explicitly that rewording is insufficient and whole bullets/entries must go.
+
+**Real end-to-end result:** overflow doc 2 pages / 1.11 → obey new instruction
+→ recompile → **1 page, fill 1.00, ok=True. Converged.**
+
+### Also confirmed with real compiles
+
+- 5 of 8 templates compile in the sandbox (Jake, Anubhav, Deedy, PlushCV,
+  AltaCV partially). The other 3 fail only on CTAN fonts absent locally
+  (`lato`, `fontawesome`, `fontawesome5`) — all installed in CV_BUILDER's
+  Docker image via `tlmgr`, so not a product bug.
+- CV_BUILDER's `extractPageCount` regex verified against real `doc.log` files
+  from both pdflatex and xelatex runs. Returns `null` when a compile produced
+  no PDF, which is correct.
+
+**Still not verified**: a run against live LLM APIs (no keys here). The loop's
+mechanics, measurement and prompts are now real-compile-verified; what the
+model actually returns is not.

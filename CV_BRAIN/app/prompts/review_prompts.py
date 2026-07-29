@@ -151,20 +151,58 @@ def build_page_fit_prompt(
     delta: float,
     generated_tex: str,
     template_tex: str,
+    pages: int = 0,
+    expected: int = 0,
+    last_page_fill: float = 0.0,
 ) -> str:
     """
     Ask the LLM to expand or condense the document to hit a page target.
 
-    `delta` is how far off we are in pages; it is converted into a concrete
-    line budget, because "make it a bit shorter" is far less actionable to an
-    LLM than "remove about 8 lines".
+    The line budget is the important part — "make it a bit shorter" is far less
+    actionable than "remove about 8 lines".
+
+    Overflow is budgeted differently from a plain length mismatch. Measured
+    against a real compile: a document at 1.11 pages was told to remove ~5
+    lines (delta x lines-per-page); doing so took it to 1.06 pages — still two
+    pages. To eliminate a page you must clear EVERYTHING on it, including the
+    vertical space taken by section headings and list environments, which the
+    delta-based figure badly underestimates.
     """
     # ~45 usable text lines per page is a fair average across these templates.
     LINES_PER_PAGE = 45
-    lines_off = max(1, round(abs(delta) * LINES_PER_PAGE))
+
+    overflowing = pages and expected and pages > expected
+
+    if overflowing:
+        # Clear the whole trailing page, plus a buffer for heading/list spacing.
+        lines_off = max(4, round(last_page_fill * LINES_PER_PAGE) + 4)
+    else:
+        lines_off = max(1, round(abs(delta) * LINES_PER_PAGE))
 
     if action == "condense":
-        instruction = f"""The document is currently {current_length:.2f} pages and must become {target_length} pages.
+        if overflowing:
+            instruction = f"""The document currently runs to {pages} pages but MUST fit on {expected}.
+Page {pages} holds only about {last_page_fill * 100:.0f}% of a page of content — a stray
+tail that has to disappear completely.
+
+Remove roughly {lines_off} lines. CRITICAL: tightening wording is NOT enough here.
+Shaving a few words leaves the spilled content on page {pages} and nothing changes —
+this has been measured. To remove a page you must free up as much vertical space as
+that page's content plus the space its section headings and list environments occupy.
+
+Do this, in priority order:
+1. Identify exactly what content currently sits on the final page.
+2. Remove or merge WHOLE bullet points — not individual words. If a short section
+   (e.g. Certifications, Achievements) is what spills over, either cut its weakest
+   entries outright or merge the whole section into a single compact line.
+3. Only then tighten wording elsewhere to claw back the remaining space.
+
+HARD CONSTRAINTS — violating any of these is a failure:
+- Every project entry MUST still have its dedicated tech-stack bullet plus AT LEAST 3 description bullets.
+- Do NOT delete an entire project, experience, or education entry.
+- Do NOT shrink fonts, margins, or spacing. Do NOT touch the preamble."""
+        else:
+            instruction = f"""The document is currently {current_length:.2f} pages and must become {target_length} pages.
 It is TOO LONG by roughly {lines_off} lines of text.
 
 Shorten it by approximately {lines_off} lines. In priority order:
@@ -174,7 +212,7 @@ Shorten it by approximately {lines_off} lines. In priority order:
 4. Shorten the skills list by removing the most generic entries.
 
 HARD CONSTRAINTS — violating any of these is a failure:
-- Every project entry MUST still have its dedicated "Tech Stack:" bullet plus AT LEAST 3 description bullets.
+- Every project entry MUST still have its dedicated tech-stack bullet plus AT LEAST 3 description bullets.
 - Do NOT delete an entire project, experience, or education entry.
 - Do NOT drop a section that has real candidate data.
 - Do NOT shrink fonts, margins, or spacing. Do NOT touch the preamble."""

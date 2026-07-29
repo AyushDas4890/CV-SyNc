@@ -159,60 +159,87 @@ def classify(length: float, target: Optional[float] = None, pages: Optional[int]
     }
 
 
-def _fill_ratio_from_page(page) -> Optional[float]:
-    """
-    Fraction of a page's usable height that carries text.
+# A baseline carrying fewer than this many characters is treated as a stray
+# glyph rather than a line of content. Jake's template renders a `$|$`
+# separator whose text matrix reports y=0 — a 2-character speck at the very
+# bottom of the page that otherwise made EVERY page measure as 100% full.
+_MIN_BASELINE_CHARS = 3
 
-    Walks the text-drawing operations and records the lowest baseline reached,
-    then compares it against the page box. Returns None if nothing measurable
-    was found (e.g. a page that is entirely vector graphics).
-    """
-    try:
-        box = page.mediabox
-        page_height = float(box.height)
-        page_width = float(box.width)
-    except Exception:
-        return None
 
-    if page_height <= 0:
-        return None
-
-    lowest_y = [page_height]
-    found = [False]
+def _collect_baselines(page) -> dict:
+    """Map baseline y -> number of non-space characters drawn at that y."""
+    baselines: dict = {}
 
     def visitor(text, cm, tm, font_dict, font_size):
         if not text or not text.strip():
             return
         try:
-            y = float(tm[5])
+            y = round(float(tm[5]), 1)
         except (TypeError, IndexError, ValueError):
             return
-        # Ignore anything outside the page box — stray transforms happen.
-        if 0 <= y <= page_height:
-            found[0] = True
-            if y < lowest_y[0]:
-                lowest_y[0] = y
+        baselines[y] = baselines.get(y, 0) + len(text.strip())
+
+    page.extract_text(visitor_text=visitor)
+    return baselines
+
+
+def _fill_ratio_from_page(page) -> Optional[float]:
+    """
+    Fraction of a page's usable height that carries text.
+
+    Measured as (top baseline - bottom baseline) / (top baseline - bottom
+    margin), where the bottom margin is inferred from the top one. Deriving the
+    top reference from the actual first line of text — rather than assuming a
+    fixed margin — self-calibrates to each template's geometry, which varies
+    widely across the eight templates here.
+
+    Returns None when nothing measurable is found (e.g. an all-graphics page).
+    """
+    try:
+        page_height = float(page.mediabox.height)
+    except Exception:
+        return None
+    if page_height <= 0:
+        return None
 
     try:
-        page.extract_text(visitor_text=visitor)
+        baselines = _collect_baselines(page)
     except Exception:
         return None
 
-    if not found[0]:
+    # Keep only baselines inside the page that carry real text.
+    ys = {
+        y: n
+        for y, n in baselines.items()
+        if 0 <= y <= page_height and n >= _MIN_BASELINE_CHARS
+    }
+    if not ys:
         return None
 
-    # Assume a symmetric margin: whatever gap sits above the first line is
-    # roughly the gap that would sit below the last. Using the raw page height
-    # would systematically under-report fill because of the bottom margin.
-    margin = min(page_height * 0.10, 72.0)  # cap at 1 inch
-    usable_top = page_height - margin
-    usable_height = usable_top - margin
+    total_chars = sum(ys.values())
+    ordered = sorted(ys)
+
+    # Drop isolated specks near the bottom: a baseline far below the next one
+    # up that carries a negligible share of the page's text is not content.
+    while len(ordered) > 1:
+        gap = ordered[1] - ordered[0]
+        share = ys[ordered[0]] / total_chars if total_chars else 0
+        if gap > page_height * 0.15 and share < 0.02:
+            ordered.pop(0)
+        else:
+            break
+
+    lowest, highest = ordered[0], ordered[-1]
+
+    # Infer the bottom margin from the top one; most resume templates are
+    # roughly symmetric vertically.
+    top_margin = max(0.0, page_height - highest)
+    usable_height = highest - top_margin
     if usable_height <= 0:
         return None
 
-    content_height = usable_top - lowest_y[0]
-    ratio = content_height / usable_height
-    # Clamp: content can legitimately run into the margin.
+    ratio = (highest - lowest) / usable_height
+    # Content can legitimately run into the bottom margin.
     return max(0.0, min(1.0, ratio))
 
 

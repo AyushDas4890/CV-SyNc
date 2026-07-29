@@ -2,30 +2,33 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# UV_SYSTEM_CERTS=1 forces uv to use OpenSSL + system CA certs instead of
-# its bundled rustls, which rejects corporate SSL-inspection proxy certs.
-# UV_PYTHON pins uv to system Python, overriding .python-version (which says 3.10).
-ENV UV_SYSTEM_CERTS=1
-ENV UV_PYTHON=python3.11
+# Dependencies are installed with pip into an explicit venv rather than with
+# `uv sync`.
+#
+# Why: behind a TLS-inspecting corporate proxy (Sophos/Zscaler) uv cannot fetch
+# from PyPI — it fails with "invalid peer certificate: UnknownIssuer" even with
+# UV_SYSTEM_CERTS=1, because the proxy's CA is not in the image's trust store.
+# pip's --trusted-host does work there, which is why the previous Dockerfile's
+# pip step (installing uv) succeeded while `uv sync` failed. Using pip for the
+# dependencies too makes the image buildable on that network.
+#
+# The runtime contract is unchanged: a self-contained /app/.venv, invoked
+# directly, with no network access at container start.
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-RUN pip install --no-cache-dir \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org \
-    uv
+COPY requirements.txt ./
 
-COPY pyproject.toml uv.lock ./
-# NOT --frozen: pyproject.toml gained `pypdf` (needed to measure whether the
-# generated CV lands on 1 or 2 pages) and uv.lock has not been regenerated,
-# so --frozen would fail the build with "the lockfile is not up-to-date".
-# Plain `uv sync` re-resolves and refreshes the lock inside the image.
-# Regenerate uv.lock locally with `uv lock` and restore --frozen when
-# convenient — this only relaxes BUILD-time resolution; runtime is still the
-# hermetic `.venv/bin/uvicorn` invocation below.
-RUN uv sync --no-dev
+RUN python -m venv .venv \
+    && .venv/bin/pip install \
+        --trusted-host pypi.org \
+        --trusted-host files.pythonhosted.org \
+        --trusted-host pypi.python.org \
+        -r requirements.txt
 
 COPY . .
 
 EXPOSE 8000
 
-# Use the pre-built venv's uvicorn directly — avoids any uv runtime network calls
+# Direct venv invocation — no resolver, no network at startup.
 CMD [".venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

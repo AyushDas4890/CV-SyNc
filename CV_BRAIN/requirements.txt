@@ -1,0 +1,16 @@
+# Runtime dependencies, mirroring [project.dependencies] in pyproject.toml.
+#
+# Used by the Docker build instead of `uv sync`, because uv cannot fetch from
+# PyPI behind a TLS-inspecting corporate proxy (Sophos/Zscaler): it fails with
+# "invalid peer certificate: UnknownIssuer" even with UV_SYSTEM_CERTS=1.
+# pip accepts --trusted-host, which does work there.
+#
+# Keep in sync with pyproject.toml.
+fastapi>=0.139.2
+httpx>=0.28.0
+langchain>=1.3.14
+langchain-groq>=1.1.3
+langchain-openai>=0.3.0
+python-dotenv>=1.1.0
+pypdf>=5.1.0
+uvicorn>=0.51.0

@@ -1,7 +1,7 @@
 From 248062d14389c67892399b41a5080f917f9c9e77 Mon Sep 17 00:00:00 2001
 From: Ayush Das <das.ayush4890@gmail.com>
 Date: Wed, 29 Jul 2026 10:34:37 +0530
-Subject: [PATCH 2/2] feat: report compiled page count via X-Page-Count header
+Subject: [PATCH 2/3] feat: report compiled page count via X-Page-Count header
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

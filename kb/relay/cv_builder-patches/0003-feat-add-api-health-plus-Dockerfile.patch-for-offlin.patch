@@ -1,0 +1,87 @@
+From a97503572ae332ae9717cfe581d4a0b29bda4794 Mon Sep 17 00:00:00 2001
+From: Ayush Das <das.ayush4890@gmail.com>
+Date: Wed, 29 Jul 2026 11:51:31 +0530
+Subject: [PATCH 3/3] feat: add /api/health, plus Dockerfile.patch for offline
+ rebuilds
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+/api/health did not exist. The CV-Sync KB documented it as available, and a
+container healthcheck pointed at it — which 404s, so the service would be
+marked permanently unhealthy and anything with `depends_on: service_healthy`
+would refuse to start. Registered before the routers so it cannot be shadowed
+by /api/:something.
+
+Dockerfile.patch rebuilds only the application code on top of an
+already-built image. The normal Dockerfile starts FROM
+minidocks/texlive:2023-medium, which cannot be pulled where a TLS-inspecting
+proxy mangles docker.io responses. Since only src/ changes between builds,
+reusing the existing image skips the registry and takes seconds instead of a
+full TeXLive install:
+
+    docker build -f Dockerfile.patch -t cvsync-cv-builder:latest .
+
+Verified: /api/health returns {"ok":true,"service":"CV_BUILDER"}, the container
+reports healthy, and a test compile returns X-Page-Count: 1.
+---
+ Dockerfile.patch | 28 ++++++++++++++++++++++++++++
+ src/index.js     |  7 +++++++
+ 2 files changed, 35 insertions(+)
+ create mode 100644 Dockerfile.patch
+
+diff --git a/Dockerfile.patch b/Dockerfile.patch
+new file mode 100644
+index 0000000..5425e71
+--- /dev/null
++++ b/Dockerfile.patch
+@@ -0,0 +1,28 @@
++# Rebuild CV_BUILDER's application code on top of an ALREADY-BUILT image.
++#
++# The normal Dockerfile starts FROM minidocks/texlive:2023-medium, which cannot
++# be pulled on a network where a TLS-inspecting proxy mangles docker.io
++# responses (every tag reports "not found" or a 502). Since only src/ changes,
++# reusing the existing image as the base skips the registry entirely and takes
++# seconds instead of a full TeXLive install.
++#
++# Usage (from cv_builder_src/):
++#   docker build -f Dockerfile.patch -t cvsync-cv-builder:latest .
++#
++# BASE defaults to the previously built compose image; override if yours is
++# named differently:
++#   docker build -f Dockerfile.patch --build-arg BASE=cv-builder:local -t cvsync-cv-builder:latest .
++ARG BASE=cvsync-cv-builder:latest
++FROM ${BASE}
++
++WORKDIR /app
++
++# Only the application code changes; TeXLive, tlmgr packages, fonts and
++# node_modules all come from the base image.
++COPY src ./src
++COPY package*.json ./
++
++EXPOSE 3000
++ENV PORT=3000
++
++CMD ["node", "src/index.js"]
+diff --git a/src/index.js b/src/index.js
+index 3d1a7ab..1a19e0b 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -10,6 +10,13 @@ const app = express();
+ app.use(cors());
+ app.use(express.json({ limit: '5mb' }));
+ 
++// Liveness probe. Documented in the CV-Sync KB as already existing, but it
++// never did — /api/health returned 404, so any container healthcheck pointed
++// at it would mark this service permanently unhealthy and block anything
++// depending on it from starting. Registered before the routers so it can never
++// be shadowed by /api/:something.
++app.get('/api/health', (req, res) => res.json({ ok: true, service: 'CV_BUILDER' }));
++
+ app.use('/api', latexRouter);
+ app.use('/api/templates', templateRouter);
+ 
+-- 
+2.34.1
+

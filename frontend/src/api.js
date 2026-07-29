@@ -66,7 +66,10 @@ async function fetchReadmesForRepos(repos) {
 // ── Build CV_BRAIN's GenerateCvRequest from onboarding data cached in localStorage ──
 // See app/models.py in CV_BRAIN (UserProfile, RepoDetail, AchievementEntry) for the
 // target shape. Async because it fetches READMEs for the selected repos.
-async function buildGenerateCvPayload({ targetRole = "", targetPages = 1 } = {}) {
+// targetPages: "auto" lets CV_BRAIN pick 1, 1.5 or 2 pages based on how much
+// real content there is, then hold the document to that band. Pass 1, 1.5 or
+// 2 to pin it explicitly.
+async function buildGenerateCvPayload({ targetRole = "", targetPages = "auto" } = {}) {
   const studentProfile = JSON.parse(localStorage.getItem("cv_sync_student_profile") || "{}");
   const experience = JSON.parse(localStorage.getItem("cv_sync_experience") || "[]");
   const selectedRepos = JSON.parse(localStorage.getItem("cv_sync_selected_repos") || "[]");

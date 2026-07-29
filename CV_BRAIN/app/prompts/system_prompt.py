@@ -6,11 +6,44 @@ system prompt for the LLM based on the selected template and user data context.
 from app.prompts.template_registry import get_template_context
 
 
+def _page_budget_text(target_pages) -> str:
+    """
+    Render the PAGE BUDGET rule.
+
+    'auto' means the content decides the length, so the model is told the
+    permitted landing zones rather than one fixed number — the compile-measure
+    loop afterwards is what actually pins it to a band.
+    """
+    if target_pages == "auto" or target_pages is None:
+        return (
+            "The finished resume MUST be exactly ONE page, ONE AND A HALF pages, or TWO pages "
+            "— nothing in between and nothing longer. Judge from the amount of real candidate "
+            "data provided which of those three is honest: sparse data means a well-filled single "
+            "page, rich data (several roles plus several substantial projects) means two. "
+            "'One and a half' means a full first page and a second page filled roughly halfway.\n"
+            "    A page that trails off into blank white space after a few lines is a FAILURE, "
+            "and so is a second page carrying only two or three stray lines"
+        )
+
+    target = float(target_pages)
+    if target == 1.5:
+        return (
+            "The finished resume MUST be ONE AND A HALF pages: a completely full first page, "
+            "and a second page filled roughly halfway (about 40-60% of its height).\n"
+            "    A nearly-empty second page is a FAILURE"
+        )
+    plural = "s" if target != 1 else ""
+    return (
+        f"The finished resume MUST fill exactly {target:g} full page{plural} of content.\n"
+        "    A resume with a few lines of content followed by blank white space is a FAILURE"
+    )
+
+
 def build_system_prompt(
     template_id: str,
     has_experience: bool,
     has_education: bool,
-    target_pages: int = 1,
+    target_pages=1,
 ) -> str:
     """
     Build the full system prompt incorporating:
@@ -61,7 +94,7 @@ COMPLETENESS RULES — CRITICAL (READ CAREFULLY)
 
 9. **FILL EVERY SECTION**: If the user provided education, experience, projects, and skills — ALL of them MUST appear in the output. Never skip or omit a section that has user data. A resume that only shows projects and skills but skips experience/education is UNACCEPTABLE.
 
-10. **PAGE BUDGET**: The output MUST fill {target_pages} full page(s) of content. A resume with 3 lines of content followed by blank white space is a FAILURE. If user data is sparse:
+10. **PAGE BUDGET**: {_page_budget_text(target_pages)}. If user data is sparse:
     - Expand project bullet points with more technical detail extracted from the repository README, commit messages, or file structure.
     - Add more descriptive skill categories.
     - Use 3-4 bullet points per project/experience entry instead of 1-2.

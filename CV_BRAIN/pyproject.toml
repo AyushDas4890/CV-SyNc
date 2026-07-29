@@ -11,5 +11,8 @@ dependencies = [
     "langchain-groq>=1.1.3",
     "langchain-openai>=0.3.0",
     "python-dotenv>=1.1.0",
+    # Read-only PDF inspection: page count and last-page text extent, used to
+    # measure whether the generated CV lands on 1 / 1.5 / 2 pages. Pure Python.
+    "pypdf>=5.1.0",
     "uvicorn>=0.51.0",
 ]

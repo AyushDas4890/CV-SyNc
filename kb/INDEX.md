@@ -14,6 +14,7 @@ Style: caveman-compressed. All technical substance intact.
 | 06-build-plan.md | phased steps + pass checks + what's been built | deciding what next |
 | 07-decisions.md | locked decisions + open questions + CV_BRAIN wiring notes | before proposing changes |
 | 08-bugfix-deploy-2026-07-29.md | full-repo bug sweep + deployment hardening: security fixes, prod compose overlay, what's verified, what's still OPEN | deploying, or before touching auth/CORS/Docker |
+| 09-page-fitting-and-structure-review.md | 1/1.5/2-page enforcement (compile→measure→adjust loop) + LLM structure audit; config, cost/latency, degradation | touching generation length, prompts, or /api/generate-cv latency |
 
 Deployment (2026-07-29): base `docker-compose.yml` = local dev stack. Production =
 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`,

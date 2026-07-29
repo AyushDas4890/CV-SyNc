@@ -12,14 +12,18 @@ So Ayush does **not** have push access to CV_BUILDER, contrary to what
 00-project.md and INDEX.md previously claimed. Corrected there.
 
 Base: `2e043a6` (`origin/master` as of 2026-07-29).
-Result: `853bfe0`, tree `87e01eb`.
+Result: `248062d`, tree `a4ea3e3`. **Three** commits.
 
 ## What's here
 
 | File | What |
 |---|---|
-| `cv_builder-fixes.bundle` | **Preferred.** Both commits as real git objects. |
-| `0001-fix-PORT-fallback-...patch` | Fallback: the code fixes only, no normalization. |
+| `cv_builder-fixes.bundle` | **Preferred.** All three commits as real git objects. |
+| `0001-fix-PORT-fallback-...patch` | Fallback: code fixes, applies on top of the normalization commit. |
+| `0002-feat-report-compiled-page-count-...patch` | Fallback: the X-Page-Count feature. |
+
+Note the patches are generated **on top of** the normalization commit
+(`20397a0`), which is itself only in the bundle — see the patch caveat below.
 
 ## Commit 1 — chore: add .gitattributes and normalize line endings to LF
 
@@ -49,6 +53,23 @@ Closes every CV_BUILDER item on the 07-decisions relay list except the
   `'invalid respone from controleer'` and discarded the compile log and parsed
   error list it had just built. Now logs both.
 
+## Commit 3 — feat: report compiled page count via X-Page-Count header
+
+latexmk already announces the final length in its log (`Output written on
+doc.pdf (2 pages, ...)`), so the page count is free — callers no longer have
+to parse the returned PDF just to learn how long the document is.
+
+- `runLatexmk` now reads `doc.log` on **success** too, not only on failure;
+  that log line is where the count lives. Falls back to stdout, never fails a
+  compile over it.
+- `compileLatex` returns `pageCount` next to the PDF buffer.
+- The controller sets `X-Page-Count` **and** `Access-Control-Expose-Headers`
+  — without the latter, browsers hide the header from cross-origin JS.
+
+CV_BRAIN consumes this to hold generated CVs to 1, 1.5 or 2 pages. It falls
+back to parsing the PDF itself when the header is absent, so merging this is a
+performance/robustness win rather than a hard requirement.
+
 ## How to apply — bundle (preferred, verified)
 
 Works regardless of platform line-ending settings, because a bundle carries
@@ -63,7 +84,7 @@ git merge --ff-only incoming
 git push origin master
 ```
 
-Verified end-to-end: resulting tree hash is exactly `87e01eb`, matching the
+Verified end-to-end: resulting tree hash is exactly `a4ea3e3`, matching the
 local checkout, with a clean working tree.
 
 ## How to apply — patch (fallback, code fixes only)

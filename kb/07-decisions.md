@@ -57,6 +57,22 @@ Full path now works: Profile/Experience/GitHub/Template pages -> `frontend/src/a
 - Full findings list, verification evidence, and remaining gaps:
   08-bugfix-deploy-2026-07-29.md.
 
+## LOCKED (2026-07-29 — page fitting + structure review)
+- Generated CVs must land on 1, 1.5 or 2 pages. Enforced by a real
+  compile→measure→adjust loop in CV_BRAIN, NOT by prompting alone — an LLM
+  cannot predict its own output's page count. See 09-page-fitting-and-
+  structure-review.md.
+- "1.5 pages" = 2 physical pages with the second ~40-60% full. Page count alone
+  is insufficient; last-page fill ratio must be measured (hence `pypdf`).
+- `EXPECTED_PAGES` is enforced alongside length, so a 2-page document with an
+  orphan stub second page cannot pass as "1 page".
+- `target_pages` accepts only "auto" | 1 | 1.5 | 2; anything else is a 422.
+  "auto" locks onto its chosen band after the first compile.
+- Both refinement passes are advisory-by-degradation: they never block
+  returning a CV, only attach `warnings`.
+- COST: /api/generate-cv is now up to 7 LLM calls + 3 compiles worst case.
+  `ENABLE_PAGE_FIT=false` restores the old fast path.
+
 ## OPEN (added 2026-07-29, blocks real production)
 - In-memory `userStore` means users/tokens/profiles vanish on restart and can't
   be shared across replicas — the app is effectively single-instance until the

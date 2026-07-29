@@ -27,6 +27,13 @@ from app.service.latex_sanitizer import (
     fallback_latex_filler,
 )
 from app.service.output_validator import validate_output
+from app.service.compile_client import compile_tex
+from app.service.page_metrics import measure_pdf, classify
+from app.service.structure_reviewer import build_review_call, parse_review
+from app.prompts.review_prompts import (
+    build_structure_repair_prompt,
+    build_page_fit_prompt,
+)
 
 config = Server_Credentials()
 
@@ -198,6 +205,190 @@ def strip_latex_comments(tex: str) -> str:
     return '\n'.join(cleaned_lines)
 
 
+# ── Refinement passes ────────────────────────────────────────────────────────
+
+def _finalize(tex: str, template_tex: str) -> str:
+    """Sanitize + restore the original preamble. What actually gets compiled."""
+    return replace_preamble_with_original(sanitize_generated_tex(tex), template_tex)
+
+
+async def run_structure_review(
+    template_id: str,
+    template_tex: str,
+    generated_tex: str,
+) -> dict:
+    """
+    Ask the LLM whether the generated document respects the template.
+
+    Advisory: any failure here returns "no opinion" rather than raising, so a
+    flaky review can never sink an otherwise good generation.
+    """
+    system_prompt, user_prompt = build_review_call(template_id, template_tex, generated_tex)
+    try:
+        raw = await call_llm_async(system_prompt, user_prompt)
+    except Exception as exc:
+        print(f"[LLM_BRAIN] Structure review call failed: {type(exc).__name__}: {exc}")
+        return {
+            "structure_ok": True,
+            "issues": [],
+            "summary": "structure review unavailable",
+            "parsed": False,
+        }
+
+    review = parse_review(raw)
+    if review["parsed"]:
+        print(
+            f"[LLM_BRAIN] Structure review: ok={review['structure_ok']} "
+            f"issues={len(review['issues'])} — {review['summary']}"
+        )
+        for issue in review["issues"]:
+            print(
+                f"[LLM_BRAIN]   [{issue.get('severity')}] "
+                f"{issue.get('location')}: {issue.get('problem')}"
+            )
+    else:
+        print("[LLM_BRAIN] Structure review response unparseable — skipping")
+    return review
+
+
+async def apply_structure_repair(
+    template_id: str,
+    template_tex: str,
+    generated_tex: str,
+    issues: list,
+) -> Optional[str]:
+    """
+    Run one repair pass for the structural issues found.
+
+    Returns the repaired tex, or None if the repair produced nothing usable —
+    in which case the caller keeps the original, since a broken repair is
+    worse than a document with known cosmetic issues.
+    """
+    system_prompt = build_system_prompt(
+        template_id=template_id,
+        has_experience=True,
+        has_education=True,
+        target_pages="auto",
+    )
+    repair_prompt = build_structure_repair_prompt(
+        template_id, template_tex, generated_tex, issues
+    )
+    repaired = await call_llm_async(system_prompt, repair_prompt)
+    if not _has_valid_tex(repaired):
+        print("[LLM_BRAIN] Structure repair returned no valid LaTeX — keeping original")
+        return None
+    return _finalize(repaired, template_tex)
+
+
+async def fit_to_page_target(
+    tex: str,
+    template_tex: str,
+    template_id: str,
+    engine: str,
+    target_pages,
+) -> dict:
+    """
+    Compile → measure → expand/condense until the document lands on an
+    allowed page band (1, 1.5 or 2 pages).
+
+    target_pages of "auto" snaps to whichever band the first compile lands
+    nearest; a number pins it to that band.
+
+    Returns {tex, metrics, fit, attempts, warnings}. Always returns a usable
+    document: if the target is never hit, the closest attempt is returned with
+    a warning rather than failing, since a slightly-off CV beats no CV.
+    """
+    warnings: List[str] = []
+    target = None if target_pages in ("auto", None) else float(target_pages)
+    max_attempts = int(config.get("PAGE_FIT_MAX_ATTEMPTS", 3))
+    timeout = float(config.get("PAGE_FIT_COMPILE_TIMEOUT", 120))
+
+    best = {"tex": tex, "metrics": None, "fit": None, "distance": None}
+    current_tex = tex
+
+    for attempt in range(1, max_attempts + 1):
+        result = await compile_tex(current_tex, engine=engine, template_id=template_id, timeout=timeout)
+
+        if not result.ok:
+            # Can't measure — stop trying. The document may still compile fine
+            # for the user; this loop is refinement, not a gate.
+            detail = result.error_message or "compile failed"
+            print(f"[LLM_BRAIN] Page fit: {detail} — skipping page fitting")
+            warnings.append(f"page fitting skipped: {detail}")
+            break
+
+        try:
+            metrics = measure_pdf(result.pdf_bytes, page_count_hint=result.page_count)
+        except Exception as exc:
+            print(f"[LLM_BRAIN] Page fit: could not measure PDF ({exc}) — skipping")
+            warnings.append(f"page fitting skipped: could not measure PDF ({type(exc).__name__})")
+            break
+
+        warnings.extend(metrics.notes)
+        fit = classify(metrics.length, target, pages=metrics.pages)
+        print(
+            f"[LLM_BRAIN] Page fit attempt {attempt}: {metrics.pages} page(s), "
+            f"fill={metrics.fill_ratio:.2f}, length={metrics.length:.2f} → {fit['reason']}"
+        )
+
+        distance = abs(metrics.length - fit["band"])
+        if best["distance"] is None or distance < best["distance"]:
+            best = {"tex": current_tex, "metrics": metrics, "fit": fit, "distance": distance}
+
+        if fit["ok"]:
+            return {
+                "tex": current_tex,
+                "metrics": metrics,
+                "fit": fit,
+                "attempts": attempt,
+                "warnings": warnings,
+            }
+
+        # Once auto has picked a band, hold it — otherwise the loop can chase a
+        # moving target, condensing toward 1.0 then expanding back toward 1.5.
+        if target is None:
+            target = fit["band"]
+            print(f"[LLM_BRAIN] Page fit: auto-selected {target} page target")
+
+        if attempt == max_attempts:
+            break
+
+        adjust_prompt = build_page_fit_prompt(
+            action=fit["action"],
+            current_length=metrics.length,
+            target_length=fit["band"],
+            delta=fit["delta"],
+            generated_tex=current_tex,
+            template_tex=template_tex,
+        )
+        system_prompt = build_system_prompt(
+            template_id=template_id,
+            has_experience=True,
+            has_education=True,
+            target_pages=fit["band"],
+        )
+        adjusted = await call_llm_async(system_prompt, adjust_prompt)
+        if not _has_valid_tex(adjusted):
+            print("[LLM_BRAIN] Page fit: adjustment returned no valid LaTeX — stopping")
+            warnings.append("page fitting stopped: adjustment produced invalid LaTeX")
+            break
+        current_tex = _finalize(adjusted, template_tex)
+
+    if best["metrics"] is not None and not (best["fit"] or {}).get("ok"):
+        warnings.append(
+            f"could not hit the {best['fit']['band']} page target after {max_attempts} "
+            f"attempt(s); returning closest result at {best['metrics'].length:.2f} pages"
+        )
+
+    return {
+        "tex": best["tex"],
+        "metrics": best["metrics"],
+        "fit": best["fit"],
+        "attempts": max_attempts,
+        "warnings": warnings,
+    }
+
+
 # ── Core Orchestrator ─────────────────────────────────────────────────────────
 
 async def generate_cv(
@@ -205,7 +396,7 @@ async def generate_cv(
     selected_repos: List[RepoDetail],
     template_id: str = "Jake_s_Resume__3_",
     target_role: str = "",
-    target_pages: int = 1,
+    target_pages="auto",
     latex_template: Optional[str] = None,
 ) -> dict:
     """
@@ -215,7 +406,9 @@ async def generate_cv(
     3. Call LLM
     4. Validate → retry if needed
     5. Sanitize + preamble-swap
-    6. Return result
+    6. LLM structure review against the template → repair if needed
+    7. Compile → measure → expand/condense to hit 1 / 1.5 / 2 pages
+    8. Return result
     """
 
     # ── Step 1: Get the template tex ──────────────────────────────────────
@@ -314,6 +507,54 @@ async def generate_cv(
     # ── Step 8: Preamble swap (use original template preamble) ────────────
     edited_tex = replace_preamble_with_original(edited_tex, template_tex)
 
+    warnings: List[str] = []
+
+    # ── Step 9: LLM structure review against the template ─────────────────
+    # output_validator checks that required things are PRESENT; this checks
+    # that what is present is structurally correct for this specific template
+    # (invented macros, damaged preamble, unbalanced environments) — not
+    # practical to express as regex across eight different templates.
+    structure_review = None
+    if config.get("ENABLE_STRUCTURE_REVIEW"):
+        structure_review = await run_structure_review(template_id, template_tex, edited_tex)
+        blocking = structure_review.get("blocking_issues") or []
+        if blocking:
+            print(f"[LLM_BRAIN] Structure review found {len(blocking)} blocking issue(s) — repairing")
+            repaired = await apply_structure_repair(
+                template_id, template_tex, edited_tex, blocking
+            )
+            if repaired:
+                edited_tex = repaired
+                # Re-check that the repair didn't strip out required content.
+                recheck = validate_output(edited_tex, user_profile, has_experience, has_education)
+                if not recheck.passed:
+                    warnings.append(
+                        "structure repair introduced completeness gaps: "
+                        + ", ".join(recheck.failures)
+                    )
+            else:
+                warnings.append("structural issues found but repair failed; returning original")
+        elif structure_review.get("issues"):
+            warnings.append(
+                f"{len(structure_review['issues'])} minor structural note(s) from review"
+            )
+
+    # ── Step 10: Fit the document to 1 / 1.5 / 2 pages ────────────────────
+    page_metrics = None
+    page_fit = None
+    if config.get("ENABLE_PAGE_FIT"):
+        fit_result = await fit_to_page_target(
+            tex=edited_tex,
+            template_tex=template_tex,
+            template_id=template_id,
+            engine=engine,
+            target_pages=target_pages,
+        )
+        edited_tex = fit_result["tex"]
+        page_metrics = fit_result["metrics"]
+        page_fit = fit_result["fit"]
+        warnings.extend(fit_result["warnings"])
+
     # ── Logging ───────────────────────────────────────────────────────────
     lines = edited_tex.split('\n')
     print(f"[LLM_BRAIN] Final TeX: {len(lines)} lines, {len(edited_tex)} chars")
@@ -329,10 +570,26 @@ async def generate_cv(
         f"Has \\end{{document}}: {has_enddoc}"
     )
 
+    if page_metrics is not None:
+        summary = (
+            f"Resume generated: {page_metrics.length:.2f} pages "
+            f"({page_metrics.pages} physical, last page {page_metrics.fill_ratio:.0%} full)"
+        )
+        if page_fit and page_fit.get("ok"):
+            summary += f", on the {page_fit['band']} page target."
+        elif page_fit:
+            summary += f", closest achievable to the {page_fit['band']} page target."
+    else:
+        summary = "Resume generated with template-aware prompting and completeness validation."
+
     return {
         "ok": True,
         "tex": edited_tex,
         "engine": engine,
         "template_id": template_id,
-        "summary": "Resume generated successfully with template-aware prompting and completeness validation.",
+        "summary": summary,
+        "pages": page_metrics.to_dict() if page_metrics else None,
+        "page_fit": page_fit,
+        "structure_review": structure_review,
+        "warnings": warnings,
     }

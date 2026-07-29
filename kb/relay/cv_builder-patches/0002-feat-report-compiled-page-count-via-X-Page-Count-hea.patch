@@ -1,0 +1,98 @@
+From 248062d14389c67892399b41a5080f917f9c9e77 Mon Sep 17 00:00:00 2001
+From: Ayush Das <das.ayush4890@gmail.com>
+Date: Wed, 29 Jul 2026 10:34:37 +0530
+Subject: [PATCH 2/2] feat: report compiled page count via X-Page-Count header
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+latexmk already announces the final length in its log ("Output written on
+doc.pdf (2 pages, ...)"), so the page count is free to extract — callers no
+longer have to parse the returned PDF just to find out how long the document
+came out.
+
+- runLatexmk now also reads doc.log on SUCCESS, not just on failure; that log
+  line is where the count lives. Falls back to stdout if the log is
+  unreadable, and never fails a compile over it.
+- compileLatex returns pageCount alongside the PDF buffer.
+- The controller sets X-Page-Count, plus Access-Control-Expose-Headers, since
+  browsers hide non-safelisted headers from cross-origin JS otherwise.
+
+Consumed by CV_BRAIN to hold generated CVs to 1, 1.5 or 2 pages.
+---
+ src/controller/latex.controller.js |  7 +++++++
+ src/service/latex.service.js       | 26 +++++++++++++++++++++++---
+ 2 files changed, 30 insertions(+), 3 deletions(-)
+
+diff --git a/src/controller/latex.controller.js b/src/controller/latex.controller.js
+index cc8f106..e7da6a9 100644
+--- a/src/controller/latex.controller.js
++++ b/src/controller/latex.controller.js
+@@ -31,6 +31,13 @@ class LatexController {
+       logger.info('request sent to service');
+       if (result.success) {
+         res.setHeader('Content-Type', 'application/pdf');
++        // Page count comes free from the latexmk log. Exposed so callers can
++        // check the document length without re-parsing the PDF. Expose-Headers
++        // is required or browsers hide it from cross-origin JS.
++        if (result.pageCount != null) {
++          res.setHeader('X-Page-Count', String(result.pageCount));
++          res.setHeader('Access-Control-Expose-Headers', 'X-Page-Count');
++        }
+         logger.info('Sucessfully sent response ack from controler');
+         return res.send(result.pdfBuffer);
+       } else {
+diff --git a/src/service/latex.service.js b/src/service/latex.service.js
+index 4a355d1..787f75b 100644
+--- a/src/service/latex.service.js
++++ b/src/service/latex.service.js
+@@ -59,7 +59,16 @@ function runLatexmk(dir, engine = 'pdflatex') {
+       }
+ 
+       if (pdfExists) {
+-        resolve({ ok: true, pdfPath });
++        // Read doc.log on success too — it carries the "Output written on
++        // doc.pdf (N pages...)" line the caller needs. Fall back to stdout if
++        // the log can't be read; never fail the compile over this.
++        let successLog = '';
++        try {
++          successLog = await fs.readFile(path.join(dir, 'doc.log'), 'utf8');
++        } catch {
++          successLog = stdout;
++        }
++        resolve({ ok: true, pdfPath, log: successLog });
+       } else {
+         let log = '';
+         try {
+@@ -78,6 +87,16 @@ function runLatexmk(dir, engine = 'pdflatex') {
+   });
+ }
+ 
++// latexmk/pdftex always announce the final page count in the log, e.g.
++//   Output written on doc.pdf (2 pages, 123456 bytes).
++// Reading it here is free and saves the caller from parsing the PDF just to
++// find out how long the document turned out.
++function extractPageCount(log) {
++  if (!log) return null;
++  const m = log.match(/Output written on .*?\((\d+)\s+pages?/i);
++  return m ? Number(m[1]) : null;
++}
++
+ function extractErrors(log) {
+   const lines = log.split('\n');
+   const errors = [];
+@@ -127,8 +146,9 @@ class LatexService {
+ 
+       if (compileResult.ok) {
+         const pdfBuffer = await fs.readFile(compileResult.pdfPath);
+-        logger.info('Successfully served t service layer');
+-        return { success: true, pdfBuffer };
++        const pageCount = extractPageCount(compileResult.log);
++        logger.info({ pageCount }, 'Successfully served t service layer');
++        return { success: true, pdfBuffer, pageCount };
+       } else {
+         const errors = extractErrors(compileResult.log);
+         return { success: false, log: compileResult.log, errors };
+-- 
+2.34.1
+

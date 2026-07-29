@@ -41,15 +41,20 @@ async def generate_cv_endpoint(req: GenerateCvRequest):
       - selected_repos: GitHub repositories to extract project info from
       - template_id: Which template to use (e.g., "Jake_s_Resume__3_")
       - target_role: Optional target job role for ATS optimization
-      - target_pages: Number of pages (default 1)
+      - target_pages: "auto" (default), 1, 1.5 or 2. "auto" lets the content
+        decide, then snaps to the nearest of those bands.
       - latex_template: Optional raw LaTeX (backward compat — if provided, skip fetch)
-    
+
     Returns:
       - ok: bool
       - tex: The filled LaTeX string
       - engine: The compiler to use (pdflatex/xelatex/lualatex)
       - template_id: Which template was used
       - summary: Human-readable status
+      - pages: {pages, fill_ratio, length, measured} — measured document length
+      - page_fit: {ok, band, action, reason} — whether it hit the page target
+      - structure_review: LLM audit of the tex against the template
+      - warnings: non-fatal problems worth surfacing to the user
     """
     try:
         result = await generate_cv(
@@ -57,7 +62,8 @@ async def generate_cv_endpoint(req: GenerateCvRequest):
             selected_repos=req.selected_repos,
             template_id=req.template_id or "Jake_s_Resume__3_",
             target_role=req.target_role or "",
-            target_pages=req.target_pages or 1,
+            # "auto" is meaningful — don't collapse it with `or`.
+            target_pages=req.target_pages if req.target_pages is not None else "auto",
             latex_template=req.latex_template,
         )
         return result

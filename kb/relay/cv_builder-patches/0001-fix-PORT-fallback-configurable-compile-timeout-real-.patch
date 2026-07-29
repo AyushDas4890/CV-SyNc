@@ -1,31 +1,32 @@
-From 5358b4cb3693511391c6562313e49574cb9b0243 Mon Sep 17 00:00:00 2001
+From 853bfe0dbfe812d6dc94fc52393ab492dd15c6d9 Mon Sep 17 00:00:00 2001
 From: Ayush Das <das.ayush4890@gmail.com>
-Date: Wed, 29 Jul 2026 09:58:49 +0530
-Subject: [PATCH] fix: PORT fallback, configurable compile timeout, real error
- logging
+Date: Wed, 29 Jul 2026 10:04:33 +0530
+Subject: [PATCH 1/2] fix: PORT fallback, configurable compile timeout, real
+ error logging
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 - server.config.js: PORT had no fallback, so `npm run dev` without a .env
-  started the server on `undefined`. Docker sets PORT so this only bit bare
-  local runs. Now `process.env.PORT || 3000`.
+  started the server on `undefined`. Docker sets PORT, which is why this only
+  ever bit bare local runs. Now `process.env.PORT || 3000`.
 - latex.service.js: COMPILE_TIMEOUT_MS was hardcoded to 15s while the README
   documented 30s. Made it env-configurable (COMPILE_TIMEOUT_MS) and raised the
-  default to 60s — xelatex/fontspec templates routinely exceed 15s on a cold
-  run and were being SIGKILLed mid-compile.
+  default to 60s — xelatex/fontspec templates (plushcv, deedy, awesome-cv)
+  routinely exceed 15s on a cold run and were being SIGKILLed mid-compile,
+  which surfaces to the caller as an opaque failure rather than a LaTeX error.
 - latex.controller.js: the 422 branch logged the fixed string
   'invalid respone from controleer', discarding the compile log and the parsed
-  error list that had just been extracted. Now logs both, so a failed compile
-  is diagnosable from the service logs instead of only from the HTTP response.
+  error list it had just built. Now logs both, so a failed compile is
+  diagnosable from the service logs and not only from the HTTP response.
 ---
- src/config/server.config.js        |   2 +-
- src/controller/latex.controller.js | 102 +++++-----
- src/service/latex.service.js       | 292 ++++++++++++++---------------
- 3 files changed, 198 insertions(+), 198 deletions(-)
+ src/config/server.config.js        | 2 +-
+ src/controller/latex.controller.js | 2 +-
+ src/service/latex.service.js       | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/src/config/server.config.js b/src/config/server.config.js
-index a70a43c..a85784b 100644
+index 3cb6c80..9897174 100644
 --- a/src/config/server.config.js
 +++ b/src/config/server.config.js
 @@ -3,6 +3,6 @@ const dotenv = require('dotenv');
@@ -37,409 +38,31 @@ index a70a43c..a85784b 100644
    logger_level: process.env.logger_level || 'info',
  };
 diff --git a/src/controller/latex.controller.js b/src/controller/latex.controller.js
-index 896c331..73b340c 100644
+index 896c331..cc8f106 100644
 --- a/src/controller/latex.controller.js
 +++ b/src/controller/latex.controller.js
-@@ -1,51 +1,51 @@
--const logger = require('../config/logger.config');
--const latexService = require('../service/latex.service');
--
--class LatexController {
--  async compile(req, res) {
--    let { tex, extraFiles, engine, templateId } = req.body || {};
--
--    if (!engine && templateId) {
--      if (templateId.includes('Awesome_CV') || templateId.includes('Deedy_CV') || templateId.includes('PlushCV')) {
--        engine = 'xelatex';
--      } else if (templateId.includes('AltaCV')) {
--        engine = 'lualatex';
--      } else {
--        engine = 'pdflatex';
--      }
--    }
--
--    if (typeof tex !== 'string' || tex.trim().length === 0) {
--      return res
--        .status(400)
--        .json({ ok: false, error: "Missing 'tex' source in request body." });
--    }
--
--    if (tex.length > 2_000_000) {
--      return res.status(413).json({ ok: false, error: 'Document too large.' });
--    }
--
--    try {
--      logger.info('request reached handler');
--      const result = await latexService.compileLatex(tex, extraFiles, engine, templateId);
--      logger.info('request sent to service');
--      if (result.success) {
--        res.setHeader('Content-Type', 'application/pdf');
--        logger.info('Sucessfully sent response ack from controler');
--        return res.send(result.pdfBuffer);
--      } else {
+@@ -34,7 +34,7 @@ class LatexController {
+         logger.info('Sucessfully sent response ack from controler');
+         return res.send(result.pdfBuffer);
+       } else {
 -        logger.error('invalid respone from controleer');
--        return res.status(422).json({
--          ok: false,
--          log: result.log,
--          errors: result.errors,
--        });
--      }
--    } catch (err) {
--      console.error('Compilation error:', err);
--      return res.status(500).json({ ok: false, error: err.message });
--    }
--  }
--}
--
--module.exports = new LatexController();
-+const logger = require('../config/logger.config');
-+const latexService = require('../service/latex.service');
-+
-+class LatexController {
-+  async compile(req, res) {
-+    let { tex, extraFiles, engine, templateId } = req.body || {};
-+
-+    if (!engine && templateId) {
-+      if (templateId.includes('Awesome_CV') || templateId.includes('Deedy_CV') || templateId.includes('PlushCV')) {
-+        engine = 'xelatex';
-+      } else if (templateId.includes('AltaCV')) {
-+        engine = 'lualatex';
-+      } else {
-+        engine = 'pdflatex';
-+      }
-+    }
-+
-+    if (typeof tex !== 'string' || tex.trim().length === 0) {
-+      return res
-+        .status(400)
-+        .json({ ok: false, error: "Missing 'tex' source in request body." });
-+    }
-+
-+    if (tex.length > 2_000_000) {
-+      return res.status(413).json({ ok: false, error: 'Document too large.' });
-+    }
-+
-+    try {
-+      logger.info('request reached handler');
-+      const result = await latexService.compileLatex(tex, extraFiles, engine, templateId);
-+      logger.info('request sent to service');
-+      if (result.success) {
-+        res.setHeader('Content-Type', 'application/pdf');
-+        logger.info('Sucessfully sent response ack from controler');
-+        return res.send(result.pdfBuffer);
-+      } else {
 +        logger.error({ log: result.log, errors: result.errors }, 'LaTeX compilation failed');
-+        return res.status(422).json({
-+          ok: false,
-+          log: result.log,
-+          errors: result.errors,
-+        });
-+      }
-+    } catch (err) {
-+      console.error('Compilation error:', err);
-+      return res.status(500).json({ ok: false, error: err.message });
-+    }
-+  }
-+}
-+
-+module.exports = new LatexController();
+         return res.status(422).json({
+           ok: false,
+           log: result.log,
 diff --git a/src/service/latex.service.js b/src/service/latex.service.js
-index a359a36..4eabf4b 100644
+index a359a36..4a355d1 100644
 --- a/src/service/latex.service.js
 +++ b/src/service/latex.service.js
-@@ -1,146 +1,146 @@
--const { randomUUID } = require('crypto');
--const fs = require('fs/promises');
--const os = require('os');
--const path = require('path');
--const { spawn } = require('child_process');
--const logger = require('../config/logger.config');
--
+@@ -5,7 +5,7 @@ const path = require('path');
+ const { spawn } = require('child_process');
+ const logger = require('../config/logger.config');
+ 
 -const COMPILE_TIMEOUT_MS = 15000; // 15 seconds timeout
--const MAX_LOG_CHARS = 20000;
--
--function runLatexmk(dir, engine = 'pdflatex') {
--  return new Promise((resolve) => {
--    const engineFlag = engine === 'xelatex' ? '-xelatex' : (engine === 'lualatex' ? '-lualatex' : '-pdf');
--    const args = [
--      engineFlag,
--      '-interaction=nonstopmode',
--      '-halt-on-error',
--      '-no-shell-escape',
--      '-file-line-error',
--      '-outdir=' + dir,
--      'doc.tex',
--    ];
--
--    const child = spawn('latexmk', args, {
--      cwd: dir,
--      env: {
--        ...process.env,
--        openin_any: 'p',
--        openout_any: 'p',
--      },
--    });
--
--    let stdout = '';
--    let stderr = '';
--    let killedForTimeout = false;
--
--    const timer = setTimeout(() => {
--      killedForTimeout = true;
--      child.kill('SIGKILL');
--    }, COMPILE_TIMEOUT_MS);
--
--    child.stdout.on('data', (d) => (stdout += d.toString()));
--    child.stderr.on('data', (d) => (stderr += d.toString()));
--
--    child.on('close', async () => {
--      clearTimeout(timer);
--      const pdfPath = path.join(dir, 'doc.pdf');
--      const pdfExists = await fs
--        .access(pdfPath)
--        .then(() => true)
--        .catch(() => false);
--
--      if (killedForTimeout) {
--        resolve({
--          ok: false,
--          log: 'Compilation timed out (possible infinite loop or very heavy document).',
--        });
--        return;
--      }
--
--      if (pdfExists) {
--        resolve({ ok: true, pdfPath });
--      } else {
--        let log = '';
--        try {
--          log = await fs.readFile(path.join(dir, 'doc.log'), 'utf8');
--        } catch {
--          log = stdout + '\n' + stderr;
--        }
--        resolve({ ok: false, log: log.slice(-MAX_LOG_CHARS) });
--      }
--    });
--
--    child.on('error', (err) => {
--      clearTimeout(timer);
--      resolve({ ok: false, log: `Failed to start latexmk: ${err.message}` });
--    });
--  });
--}
--
--function extractErrors(log) {
--  const lines = log.split('\n');
--  const errors = [];
--  for (let i = 0; i < lines.length; i++) {
--    const m = lines[i].match(/^(.+?):(\d+):\s*(.+)$/);
--    if (m) {
--      errors.push({ file: m[1], line: Number(m[2]), message: m[3] });
--      if (errors.length >= 10) break;
--    }
--  }
--  return errors;
--}
--
--class LatexService {
--  async compileLatex(texPayload, extraFiles = {}, engine = 'pdflatex', templateId = null) {
--    const jobID = randomUUID();
--    const dir = path.join(os.tmpdir(), 'latex-jobs', jobID);
--
--    await fs.mkdir(dir, { recursive: true });
--
--    try {
--      if (templateId) {
--        const templatePath = path.join(__dirname, '../templates', templateId);
--        try {
--          // fs.cp requires Node.js >= 16.7.0
--          await fs.cp(templatePath, dir, { recursive: true });
--        } catch (err) {
--          logger.warn(`Template ${templateId} not found or failed to copy: ${err.message}`);
--        }
--      }
--
--      await fs.writeFile(path.join(dir, 'doc.tex'), texPayload, 'utf8');
--
--      if (extraFiles && typeof extraFiles === 'object') {
--        for (const [filename, content] of Object.entries(extraFiles)) {
--          // Prevent directory traversal attacks
--          const normalizedPath = path.normalize(filename);
--          if (!normalizedPath.startsWith('..') && !path.isAbsolute(normalizedPath)) {
--            const targetPath = path.join(dir, normalizedPath);
--            await fs.mkdir(path.dirname(targetPath), { recursive: true });
--            await fs.writeFile(targetPath, content, 'utf8');
--          }
--        }
--      }
--
--      const compileResult = await runLatexmk(dir, engine);
--
--      if (compileResult.ok) {
--        const pdfBuffer = await fs.readFile(compileResult.pdfPath);
--        logger.info('Successfully served t service layer');
--        return { success: true, pdfBuffer };
--      } else {
--        const errors = extractErrors(compileResult.log);
--        return { success: false, log: compileResult.log, errors };
--      }
--    } catch (err) {
--      logger.error('Error occured in service layer : ', err);
--      throw new Error(err.message);
--    } finally {
--      // Best-effort cleanup
--      fs.rm(dir, { recursive: true, force: true }).catch(() => {});
--    }
--  }
--}
--
--module.exports = new LatexService();
-+const { randomUUID } = require('crypto');
-+const fs = require('fs/promises');
-+const os = require('os');
-+const path = require('path');
-+const { spawn } = require('child_process');
-+const logger = require('../config/logger.config');
-+
 +const COMPILE_TIMEOUT_MS = parseInt(process.env.COMPILE_TIMEOUT_MS || '60000', 10); // default 60s
-+const MAX_LOG_CHARS = 20000;
-+
-+function runLatexmk(dir, engine = 'pdflatex') {
-+  return new Promise((resolve) => {
-+    const engineFlag = engine === 'xelatex' ? '-xelatex' : (engine === 'lualatex' ? '-lualatex' : '-pdf');
-+    const args = [
-+      engineFlag,
-+      '-interaction=nonstopmode',
-+      '-halt-on-error',
-+      '-no-shell-escape',
-+      '-file-line-error',
-+      '-outdir=' + dir,
-+      'doc.tex',
-+    ];
-+
-+    const child = spawn('latexmk', args, {
-+      cwd: dir,
-+      env: {
-+        ...process.env,
-+        openin_any: 'p',
-+        openout_any: 'p',
-+      },
-+    });
-+
-+    let stdout = '';
-+    let stderr = '';
-+    let killedForTimeout = false;
-+
-+    const timer = setTimeout(() => {
-+      killedForTimeout = true;
-+      child.kill('SIGKILL');
-+    }, COMPILE_TIMEOUT_MS);
-+
-+    child.stdout.on('data', (d) => (stdout += d.toString()));
-+    child.stderr.on('data', (d) => (stderr += d.toString()));
-+
-+    child.on('close', async () => {
-+      clearTimeout(timer);
-+      const pdfPath = path.join(dir, 'doc.pdf');
-+      const pdfExists = await fs
-+        .access(pdfPath)
-+        .then(() => true)
-+        .catch(() => false);
-+
-+      if (killedForTimeout) {
-+        resolve({
-+          ok: false,
-+          log: 'Compilation timed out (possible infinite loop or very heavy document).',
-+        });
-+        return;
-+      }
-+
-+      if (pdfExists) {
-+        resolve({ ok: true, pdfPath });
-+      } else {
-+        let log = '';
-+        try {
-+          log = await fs.readFile(path.join(dir, 'doc.log'), 'utf8');
-+        } catch {
-+          log = stdout + '\n' + stderr;
-+        }
-+        resolve({ ok: false, log: log.slice(-MAX_LOG_CHARS) });
-+      }
-+    });
-+
-+    child.on('error', (err) => {
-+      clearTimeout(timer);
-+      resolve({ ok: false, log: `Failed to start latexmk: ${err.message}` });
-+    });
-+  });
-+}
-+
-+function extractErrors(log) {
-+  const lines = log.split('\n');
-+  const errors = [];
-+  for (let i = 0; i < lines.length; i++) {
-+    const m = lines[i].match(/^(.+?):(\d+):\s*(.+)$/);
-+    if (m) {
-+      errors.push({ file: m[1], line: Number(m[2]), message: m[3] });
-+      if (errors.length >= 10) break;
-+    }
-+  }
-+  return errors;
-+}
-+
-+class LatexService {
-+  async compileLatex(texPayload, extraFiles = {}, engine = 'pdflatex', templateId = null) {
-+    const jobID = randomUUID();
-+    const dir = path.join(os.tmpdir(), 'latex-jobs', jobID);
-+
-+    await fs.mkdir(dir, { recursive: true });
-+
-+    try {
-+      if (templateId) {
-+        const templatePath = path.join(__dirname, '../templates', templateId);
-+        try {
-+          // fs.cp requires Node.js >= 16.7.0
-+          await fs.cp(templatePath, dir, { recursive: true });
-+        } catch (err) {
-+          logger.warn(`Template ${templateId} not found or failed to copy: ${err.message}`);
-+        }
-+      }
-+
-+      await fs.writeFile(path.join(dir, 'doc.tex'), texPayload, 'utf8');
-+
-+      if (extraFiles && typeof extraFiles === 'object') {
-+        for (const [filename, content] of Object.entries(extraFiles)) {
-+          // Prevent directory traversal attacks
-+          const normalizedPath = path.normalize(filename);
-+          if (!normalizedPath.startsWith('..') && !path.isAbsolute(normalizedPath)) {
-+            const targetPath = path.join(dir, normalizedPath);
-+            await fs.mkdir(path.dirname(targetPath), { recursive: true });
-+            await fs.writeFile(targetPath, content, 'utf8');
-+          }
-+        }
-+      }
-+
-+      const compileResult = await runLatexmk(dir, engine);
-+
-+      if (compileResult.ok) {
-+        const pdfBuffer = await fs.readFile(compileResult.pdfPath);
-+        logger.info('Successfully served t service layer');
-+        return { success: true, pdfBuffer };
-+      } else {
-+        const errors = extractErrors(compileResult.log);
-+        return { success: false, log: compileResult.log, errors };
-+      }
-+    } catch (err) {
-+      logger.error('Error occured in service layer : ', err);
-+      throw new Error(err.message);
-+    } finally {
-+      // Best-effort cleanup
-+      fs.rm(dir, { recursive: true, force: true }).catch(() => {});
-+    }
-+  }
-+}
-+
-+module.exports = new LatexService();
+ const MAX_LOG_CHARS = 20000;
+ 
+ function runLatexmk(dir, engine = 'pdflatex') {
 -- 
 2.34.1
 

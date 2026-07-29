@@ -1,8 +1,12 @@
 """
 Pydantic models for LLM_BRAIN API requests and responses.
 """
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Optional, Dict, Any, Union
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Kept in sync with page_metrics.ALLOWED_LENGTHS. Declared here rather than
+# imported to avoid models.py depending on the service layer.
+ALLOWED_PAGE_TARGETS = {1.0, 1.5, 2.0}
 
 
 # ── User Profile Models ──────────────────────────────────────────────────────
@@ -76,9 +80,33 @@ class GenerateCvRequest(BaseModel):
     selected_repos: List[RepoDetail] = []
     template_id: Optional[str] = "Jake_s_Resume__3_"
     target_role: Optional[str] = ""
-    target_pages: Optional[int] = 1
+    # Document length target. "auto" (default) lets the content decide, then
+    # snaps to whichever of 1 / 1.5 / 2 pages it lands nearest. A number pins
+    # it to that exact band. Only 1, 1.5 and 2 are valid — see
+    # page_metrics.ALLOWED_LENGTHS.
+    target_pages: Optional[Union[float, str]] = "auto"
     # Backward compat: if provided, skip fetching from CV_BUILDER
     latex_template: Optional[str] = None
+
+    @field_validator("target_pages")
+    @classmethod
+    def _validate_target_pages(cls, v):
+        if v is None:
+            return "auto"
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in ("", "auto"):
+                return "auto"
+            try:
+                v = float(s)
+            except ValueError:
+                raise ValueError("target_pages must be 'auto', 1, 1.5 or 2")
+        v = float(v)
+        if v not in ALLOWED_PAGE_TARGETS:
+            raise ValueError(
+                f"target_pages must be 'auto' or one of {sorted(ALLOWED_PAGE_TARGETS)}, got {v}"
+            )
+        return v
 
 
 # ── Validation Result Model ──────────────────────────────────────────────────

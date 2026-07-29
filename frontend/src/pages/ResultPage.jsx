@@ -72,8 +72,32 @@ export default function ResultPage() {
           <p className="sub">
             Generated with template <strong>{result.template_id}</strong> · compile engine{" "}
             <strong>{result.engine}</strong>
+            {result.pages && (
+              <>
+                {" "}· length{" "}
+                <strong>
+                  {result.pages.length} page{result.pages.length === 1 ? "" : "s"}
+                </strong>{" "}
+                ({result.pages.pages} sheet{result.pages.pages === 1 ? "" : "s"}, last page{" "}
+                {Math.round(result.pages.fill_ratio * 100)}% full)
+              </>
+            )}
           </p>
         </div>
+
+        {/* Page fitting and structure problems used to be returned but never
+            displayed, so a CV that failed to hit its page target looked like a
+            clean success. Surface them. */}
+        {Array.isArray(result.warnings) && result.warnings.length > 0 && (
+          <div className="card" style={{ marginBottom: 16, borderColor: "var(--warning, #b8860b)" }}>
+            <strong>Heads up</strong>
+            <ul style={{ fontSize: "0.85rem", marginTop: 8 }}>
+              {result.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="row" style={{ marginBottom: 12 }}>

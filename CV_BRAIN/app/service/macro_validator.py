@@ -182,6 +182,37 @@ def check_macro_calls(
     return problems
 
 
+def fix_duplicate_label_colons(tex: str, arity: Dict[str, Tuple[int, bool]]) -> Tuple[str, int]:
+    """
+    Strip a trailing colon from the LABEL argument of two-argument bullet macros.
+
+    Templates like Anubhav render \\resumeItem{#1}{#2} as \\textbf{#1}{: #2} —
+    the macro supplies the ": " itself. An LLM writing
+    \\resumeItem{Tech Stack:}{Python, FastAPI} therefore produces
+    "Tech Stack:: Python, FastAPI". Observed in real output.
+
+    Only touches macros whose first argument is a short label (no LaTeX
+    commands, no sentence-length text), so a legitimate colon inside prose is
+    left alone. Returns (tex, number_of_fixes).
+    """
+    fixes = 0
+    for name, (nargs, has_opt) in arity.items():
+        if mandatory_args(nargs, has_opt) < 2:
+            continue
+        pattern = re.compile(r"(\\" + re.escape(name) + r"\s*\{)([^{}]{1,60}?)\s*:\s*(\})")
+
+        def repl(m):
+            nonlocal fixes
+            label = m.group(2)
+            if "\\" in label:  # contains a command — leave it alone
+                return m.group(0)
+            fixes += 1
+            return m.group(1) + label + m.group(3)
+
+        tex = pattern.sub(repl, tex)
+    return tex, fixes
+
+
 def describe_macro_signatures(arity: Dict[str, Tuple[int, bool]]) -> str:
     """
     Render the true signatures for use in a prompt, so the LLM is told the

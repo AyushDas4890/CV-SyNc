@@ -27,7 +27,28 @@ length = (pages - 1) + fill_ratio
 lowest text baseline on that page relative to its usable height (assuming a
 symmetric margin, capped at 1 inch).
 
-Bands: **1.0, 1.5, 2.0**, tolerance **±0.12 page** (~5 lines of text).
+Bands: **1.0 and 2.0** by default (whole pages), tolerance **±0.12 page**
+(~5 lines). Set `PAGE_LENGTH_BANDS=1,1.5,2` to allow half-page endings; 1.5
+also still works as an explicit `target_pages`.
+
+### REVISED 2026-07-29 (second pass) — why 1.5 was dropped from the default
+
+A real run produced a **2-page CV whose second page was 9% full** (6 lines:
+Certifications + one Achievement), i.e. length 1.09. Two bugs:
+
+1. **Auto band selection picked the wrong direction.** It filtered candidate
+   bands to those matching the *current* physical page count, so for a 2-page
+   document `1.0` was excluded and only `{1.5, 2.0}` remained. It therefore
+   chose "expand by 0.41 pages" over "condense by 0.09" — asking the LLM to
+   invent ~18 lines of content that didn't exist. The loop failed and returned
+   the stub. **Fix: always choose the nearest band across all of them.**
+   Trimming toward the nearest band is nearly always the achievable move.
+2. **The warning was invisible.** `warnings` and `pages` were returned by the
+   API but never rendered, so a CV that missed its target looked like a clean
+   success. ResultPage now shows measured length and any warnings.
+
+Default bands narrowed to 1 and 2 because a resume ending a quarter of the way
+down page 2 reads as an accident.
 
 `EXPECTED_PAGES = {1.0: 1, 1.5: 2, 2.0: 2}` is enforced separately from the
 length. This matters: two pages with a three-line orphan second page measures
@@ -66,6 +87,17 @@ CV_BUILDER side: `X-Page-Count` header from the latexmk log (relay commit 3).
 | `ENABLE_PAGE_FIT` | `true` | compile-measure-adjust loop on/off |
 | `PAGE_FIT_MAX_ATTEMPTS` | `3` | each attempt = 1 LLM call + 1 compile |
 | `PAGE_FIT_COMPILE_TIMEOUT` | `120` | seconds per measurement compile |
+| `PAGE_LENGTH_BANDS` | `1,2` | allowed finished lengths in pages |
+
+## Label colon duplication (fixed 2026-07-29)
+
+Two-argument bullet macros render `\textbf{#1}{: #2}` — the macro inserts the
+`": "`. An LLM writing `\resumeItem{Tech Stack:}{Python, FastAPI}` therefore
+produced **"Tech Stack:: Python, FastAPI"**, visible in real output.
+`macro_validator.fix_duplicate_label_colons` strips the trailing colon from the
+label argument of any macro with 2+ mandatory args, skipping labels containing
+LaTeX commands. Prompt rule 11b also warns about it, but the deterministic fix
+is what actually guarantees it.
 
 ## Cost / latency — READ THIS
 

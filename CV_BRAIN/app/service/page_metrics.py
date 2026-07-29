@@ -15,11 +15,26 @@ That gives a continuous number which can be snapped to the allowed 1.0 / 1.5 /
 page relative to the page's usable height.
 """
 
+import math
+import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 # Allowed document lengths, in pages.
-ALLOWED_LENGTHS = (1.0, 1.5, 2.0)
+#
+# Default is 1 or 2 whole pages: a resume that stops a quarter of the way down
+# page 2 looks like an accident. 1.5 is still selectable by asking for it
+# explicitly (target_pages=1.5) or via PAGE_LENGTH_BANDS.
+def _load_bands() -> tuple:
+    raw = os.getenv("PAGE_LENGTH_BANDS", "1,2")
+    try:
+        bands = tuple(sorted({float(x) for x in raw.split(",") if x.strip()}))
+    except ValueError:
+        bands = (1.0, 2.0)
+    return bands or (1.0, 2.0)
+
+
+ALLOWED_LENGTHS = _load_bands()
 
 # How far a measured length may sit from a band and still count as that band.
 # +/-0.12 page is roughly +/-5 lines of text — tight enough that the result
@@ -58,11 +73,16 @@ def nearest_band(length: float) -> float:
     return min(ALLOWED_LENGTHS, key=lambda b: abs(b - length))
 
 
-# How many physical sheets each band must occupy. Used to reject documents
-# whose measured length rounds onto a band they cannot actually be — e.g. two
-# pages with a three-line orphan second page measures ~1.05 and would
-# otherwise pass as a clean "1 page".
-EXPECTED_PAGES = {1.0: 1, 1.5: 2, 2.0: 2}
+def expected_pages(band: float) -> int:
+    """
+    Physical sheets a band occupies. 1.0 -> 1, 1.5 -> 2, 2.0 -> 2.
+    Computed rather than hardcoded so custom bands work.
+    """
+    return max(1, math.ceil(band - 1e-9))
+
+
+# Back-compat alias for the fixed default bands.
+EXPECTED_PAGES = {b: expected_pages(b) for b in ALLOWED_LENGTHS}
 
 
 def classify(length: float, target: Optional[float] = None, pages: Optional[int] = None) -> dict:
@@ -80,24 +100,26 @@ def classify(length: float, target: Optional[float] = None, pages: Optional[int]
     Returns {ok, band, target, delta, action, reason}. `action` is one of
     "none", "expand", "condense" — what the LLM should do next.
     """
+    # Auto-selection picks the band needing the LEAST change.
+    #
+    # Previously this filtered candidates to bands matching the current
+    # physical page count, which was wrong: a 2-page document whose second page
+    # is 9% full (length 1.09) had 1.0 excluded, so it chose "expand 0.41
+    # pages" over "condense 0.09". Expanding means inventing ~18 lines of
+    # content that may not exist, so the loop failed and returned the stub.
+    # Trimming toward the nearest band is nearly always the achievable move.
     band = target if target is not None else nearest_band(length)
-
-    # Auto-selection must not pick a band the document physically can't be on.
-    if target is None and pages is not None:
-        candidates = [b for b in ALLOWED_LENGTHS if EXPECTED_PAGES[b] == pages]
-        if candidates:
-            band = min(candidates, key=lambda b: abs(b - length))
 
     delta = length - band
 
-    if pages is not None and pages != EXPECTED_PAGES[band]:
+    if pages is not None and pages != expected_pages(band):
         # Physically the wrong number of sheets for this band. Direction is
         # decided by the sheet count, not the fractional length: a 2-page
         # document with a near-empty second page is "too long" even though its
         # measured length is barely over 1.
-        too_many = pages > EXPECTED_PAGES[band]
+        too_many = pages > expected_pages(band)
         last_page_fill = length - (pages - 1)
-        reason = f"{pages} physical page(s) but the {band} page band needs {EXPECTED_PAGES[band]}"
+        reason = f"{pages} physical page(s) but the {band} page band needs {expected_pages(band)}"
         # Only call it an orphan when the final page really is nearly empty —
         # a full overflow page is a different problem from a stub.
         if too_many and last_page_fill < MIN_LAST_PAGE_FILL:

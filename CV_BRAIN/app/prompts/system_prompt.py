@@ -132,7 +132,12 @@ COMPLETENESS RULES — CRITICAL (READ CAREFULLY)
 11b. **TECH STACK ON ITS OWN LINE (REQUIRED)**: In addition to the 3+ description bullets above, every project entry MUST include ONE dedicated bullet, placed FIRST in that project's bullet list, stating the tech stack ONLY. Write it using this template's bullet macro **with that macro's exact argument count** (see the authoritative signature list):
     - bullet macro taking ONE argument → \\resumeItem{{\\textbf{{Tech Stack:}} React, Node.js, MongoDB, Docker}}
     - bullet macro taking TWO arguments → \\resumeItem{{Tech Stack}}{{React, Node.js, MongoDB, Docker}}
-    Never omit a mandatory argument to fit this pattern. This tech-stack line is separate from — and in addition to — the 3+ substantive description bullets; it does not count toward the minimum of 3. So every project entry has 4+ bullets total: 1 tech-stack line + 3+ description bullets. Still also put the tech stack in the project heading (Rule 14) where the template supports it — the dedicated bullet line is required regardless.
+    Never omit a mandatory argument to fit this pattern.
+    IMPORTANT: with a two-argument bullet macro, do NOT put a colon at the end of the
+    label. Those macros already insert ": " between the two arguments, so
+    \\resumeItem{{Tech Stack:}}{{...}} renders as "Tech Stack:: ..." with a doubled colon.
+    Write \\resumeItem{{Tech Stack}}{{...}}. The same applies to every other labelled
+    bullet (Project Overview, Objective, and so on). This tech-stack line is separate from — and in addition to — the 3+ substantive description bullets; it does not count toward the minimum of 3. So every project entry has 4+ bullets total: 1 tech-stack line + 3+ description bullets. Still also put the tech stack in the project heading (Rule 14) where the template supports it — the dedicated bullet line is required regardless.
 
 12. **SECTION ORDER & BALANCE**: Arrange sections to fill the page naturally. Do not cluster all content at the top with empty space at the bottom. Use the RECOMMENDED SECTION ORDER from the template rules above.
 

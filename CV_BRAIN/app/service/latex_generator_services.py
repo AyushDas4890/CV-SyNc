@@ -40,6 +40,7 @@ from app.service.macro_validator import (
     check_macro_calls,
     describe_macro_signatures,
     format_problems,
+    fix_duplicate_label_colons,
 )
 
 config = Server_Credentials()
@@ -239,6 +240,13 @@ async def enforce_macro_arity(
     arity = extract_macro_arity(template_tex)
     if not arity:
         return tex, []
+
+    # Two-argument bullet macros insert ": " themselves, so a label written as
+    # "Tech Stack:" renders "Tech Stack:: ...". Seen in real output; fixed
+    # deterministically because prompting alone doesn't reliably prevent it.
+    tex, colon_fixes = fix_duplicate_label_colons(tex, arity)
+    if colon_fixes:
+        print(f"[LLM_BRAIN] Macro labels: removed {colon_fixes} duplicated colon(s)")
 
     problems = check_macro_calls(tex, arity)
     if not problems:

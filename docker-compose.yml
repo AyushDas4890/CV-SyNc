@@ -45,6 +45,11 @@ services:
       # be callable from arbitrary origins.
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
+      # Finished CV length: whole pages only by default.
+      PAGE_LENGTH_BANDS: ${PAGE_LENGTH_BANDS:-1,2}
+      ENABLE_PAGE_FIT: ${ENABLE_PAGE_FIT:-true}
+      PAGE_FIT_MAX_ATTEMPTS: ${PAGE_FIT_MAX_ATTEMPTS:-3}
+      ENABLE_STRUCTURE_REVIEW: ${ENABLE_STRUCTURE_REVIEW:-true}
     depends_on:
       cv-builder:
         condition: service_healthy

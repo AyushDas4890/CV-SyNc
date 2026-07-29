@@ -38,8 +38,10 @@ from app.prompts.review_prompts import (
 from app.service.macro_validator import (
     extract_macro_arity,
     check_macro_calls,
+    check_structural_balance,
     describe_macro_signatures,
     format_problems,
+    format_structural_problems,
     fix_duplicate_label_colons,
 )
 
@@ -249,24 +251,31 @@ async def enforce_macro_arity(
         print(f"[LLM_BRAIN] Macro labels: removed {colon_fixes} duplicated colon(s)")
 
     problems = check_macro_calls(tex, arity)
-    if not problems:
+    structural = check_structural_balance(tex)
+    if not problems and not structural:
         return tex, []
 
     signatures = describe_macro_signatures(arity)
 
     for attempt in range(1, max_attempts + 1):
         print(
-            f"[LLM_BRAIN] Macro arity: {len(problems)} bad call(s) "
-            f"(attempt {attempt}/{max_attempts})"
+            f"[LLM_BRAIN] Structural check: {len(problems)} bad call(s), "
+            f"{len(structural)} brace/env problem(s) (attempt {attempt}/{max_attempts})"
         )
         for p in problems[:5]:
             print(
                 f"[LLM_BRAIN]   line {p['line']}: \\{p['macro']} "
                 f"needs {p['expected']}, got {p['found']}"
             )
+        for s in structural[:5]:
+            print(f"[LLM_BRAIN]   line {s['line']}: {s['detail']}")
+
+        detail = format_problems(problems)
+        if structural:
+            detail += ("\n" if detail else "") + format_structural_problems(structural)
 
         repair_prompt = build_macro_arity_repair_prompt(
-            template_tex, tex, format_problems(problems), signatures
+            template_tex, tex, detail, signatures
         )
         system_prompt = build_system_prompt(
             template_id=template_id,
@@ -282,13 +291,14 @@ async def enforce_macro_arity(
 
         candidate = _finalize(repaired, template_tex)
         remaining = check_macro_calls(candidate, arity)
-        if len(remaining) < len(problems):
-            tex, problems = candidate, remaining
-        if not problems:
-            print("[LLM_BRAIN] Macro arity: all calls fixed")
+        remaining_struct = check_structural_balance(candidate)
+        if len(remaining) + len(remaining_struct) < len(problems) + len(structural):
+            tex, problems, structural = candidate, remaining, remaining_struct
+        if not problems and not structural:
+            print("[LLM_BRAIN] Structural check: document is clean")
             return tex, []
 
-    return tex, problems
+    return tex, problems + structural
 
 
 async def run_structure_review(
@@ -633,8 +643,7 @@ async def generate_cv(
     )
     if arity_problems:
         warnings.append(
-            f"{len(arity_problems)} macro call(s) still have the wrong argument count "
-            "and will likely fail to compile: "
+            f"{len(arity_problems)} structural problem(s) remain and will likely fail to compile: "
             + "; ".join(
                 f"\\{p['macro']} (line {p['line']}) needs {p['expected']}, got {p['found']}"
                 for p in arity_problems[:5]

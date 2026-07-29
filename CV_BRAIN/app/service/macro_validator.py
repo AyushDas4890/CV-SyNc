@@ -182,6 +182,121 @@ def check_macro_calls(
     return problems
 
 
+def check_structural_balance(tex: str) -> List[dict]:
+    """
+    Detect unbalanced braces and mismatched environments in the document body.
+
+    TeX reports these late and unhelpfully: an unclosed brace in a bullet on
+    line 120 surfaces as "Missing } inserted" at the \\resumeSubHeadingListEnd
+    on line 159, pointing nowhere near the actual mistake. Catching it here
+    means the offending line can be named precisely.
+
+    Ignores escaped braces, comments and verbatim-ish content.
+    Returns a list of {kind, line, detail, severity}.
+    """
+    problems: List[dict] = []
+
+    start = tex.find(r"\begin{document}")
+    if start < 0:
+        return problems
+
+    depth = 0
+    line_no = tex.count("\n", 0, start) + 1
+    open_lines: List[int] = []
+    env_stack: List[Tuple[str, int]] = []
+    i = start
+
+    while i < len(tex):
+        c = tex[i]
+        if c == "\n":
+            line_no += 1
+            i += 1
+            continue
+        if c == "\\":
+            m = re.match(r"\\(begin|end)\s*\{([^{}]*)\}", tex[i:])
+            if m:
+                kind, env = m.group(1), m.group(2).strip()
+                if kind == "begin":
+                    env_stack.append((env, line_no))
+                else:
+                    if not env_stack:
+                        problems.append({
+                            "kind": "environment",
+                            "line": line_no,
+                            "detail": rf"\end{{{env}}} with no matching \begin",
+                            "severity": "fatal",
+                        })
+                    elif env_stack[-1][0] != env:
+                        opened, oline = env_stack.pop()
+                        problems.append({
+                            "kind": "environment",
+                            "line": line_no,
+                            "detail": (
+                                rf"\end{{{env}}} closes \begin{{{opened}}} "
+                                f"opened on line {oline}"
+                            ),
+                            "severity": "fatal",
+                        })
+                    else:
+                        env_stack.pop()
+                i += m.end()
+                continue
+            i += 2  # escaped char such as \{ \} \\ \&
+            continue
+        if c == "%":
+            nl = tex.find("\n", i)
+            if nl < 0:
+                break
+            i = nl  # newline handled next iteration
+            continue
+        if c == "{":
+            depth += 1
+            open_lines.append(line_no)
+            i += 1
+            continue
+        if c == "}":
+            depth -= 1
+            if depth < 0:
+                problems.append({
+                    "kind": "brace",
+                    "line": line_no,
+                    "detail": "closing brace } with no matching {",
+                    "severity": "fatal",
+                })
+                depth = 0
+            elif open_lines:
+                open_lines.pop()
+            i += 1
+            continue
+        i += 1
+
+    if depth > 0:
+        first = open_lines[0] if open_lines else "?"
+        problems.append({
+            "kind": "brace",
+            "line": first,
+            "detail": (
+                f"{depth} unclosed brace(s); earliest still open at line {first}"
+            ),
+            "severity": "fatal",
+        })
+    for env, oline in env_stack:
+        problems.append({
+            "kind": "environment",
+            "line": oline,
+            "detail": rf"\begin{{{env}}} never closed",
+            "severity": "fatal",
+        })
+
+    return problems
+
+
+def format_structural_problems(problems: List[dict]) -> str:
+    return "\n".join(
+        f"  - line {p['line']}: {p['detail']}" for p in problems
+    )
+
+
 def fix_duplicate_label_colons(tex: str, arity: Dict[str, Tuple[int, bool]]) -> Tuple[str, int]:
     """
     Strip a trailing colon from the LABEL argument of two-argument bullet macros.

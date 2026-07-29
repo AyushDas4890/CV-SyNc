@@ -30,10 +30,11 @@ def health():
     return {
         "ok": True,
         "service": "LLM Brain",
-        "build": "2026-07-29-arity-gate-v2",
+        "build": "2026-07-29-structural-gate-v3",
         "features": {
             "macro_arity_gate": True,
             "macro_arity_final_gate": True,
+            "brace_env_balance_check": True,
             "structure_review": bool(cfg.get("ENABLE_STRUCTURE_REVIEW")),
             "page_fit": bool(cfg.get("ENABLE_PAGE_FIT")),
             "page_bands": list(ALLOWED_LENGTHS),

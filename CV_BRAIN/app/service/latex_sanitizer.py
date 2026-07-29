@@ -389,19 +389,22 @@ def sanitize_generated_tex(tex: str) -> str:
         r"\\section\{[^}]+\}\s*(?=\\section|\n\\end\{document\})", "", res_tex
     )
 
-    # 9. Fix \resumeSubheading with wrong number of arguments
-    def fix_subheading_args(match):
-        full = match.group(0)
-        args = re.findall(r'\{[^{}]*\}', full)
-        while len(args) < 4:
-            args.append('{}')
-        return '\\resumeSubheading\n      ' + ''.join(args)
-
-    res_tex = re.sub(
-        r'\\resumeSubheading\s*(?:\{[^{}]*\}\s*){1,4}',
-        fix_subheading_args,
-        res_tex,
-    )
+    # 9. REMOVED — \resumeSubheading argument "fixing".
+    #
+    # It collected arguments with re.findall(r'\{[^{}]*\}'), which cannot see
+    # nested braces. Given
+    #     \resumeSubheading{Lovely Professional University}{Punjab}
+    #                      {B.Tech \textbf{CSE}}{2023 -- 2027}
+    # it matched only the first two groups, padded to four with EMPTY braces,
+    # and left the real third and fourth arguments dangling as stray text:
+    #     {Lovely...}{Punjab}{}{}{B.Tech \textbf{CSE}}{2023 -- 2027}
+    # So the degree and dates silently vanished from the rendered CV — a
+    # content-destroying bug that did not always announce itself as a compile
+    # error.
+    #
+    # Wrong argument counts are now handled properly by
+    # macro_validator.check_macro_calls, which brace-matches correctly, works
+    # for every macro in every template, and repairs via a targeted LLM pass.
 
     # Escape bare & and _ in body text, including inside macro arguments.
     # Runs last so earlier structural passes see the text unmodified.

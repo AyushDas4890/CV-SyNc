@@ -71,7 +71,11 @@ TEMPLATE_REGISTRY = {
             "\\cvskill{Skill Name}{Rating 1-5}  — skill with rating dots",
             "\\divider  — horizontal divider between entries",
             "\\begin{itemize} ... \\item ... \\end{itemize}  — bullet lists inside cvevent",
-            "\\wheelchart{...}  — pie chart for skills (optional)",
+            # Real signature is \wheelchart[inner]{outer radius}{inner radius}{data}
+            # — 4 args, first optional. Documented here as DO-NOT-USE because
+            # getting it wrong is a fatal compile error and it adds nothing to
+            # an ATS resume.
+            "\\wheelchart  — DO NOT USE (decorative pie chart, 4 args, fatal if mis-called)",
         ],
         "skills_pattern": (
             "Use \\cvtag{Python} \\cvtag{JavaScript} inline tags, OR\n"
@@ -184,7 +188,10 @@ TEMPLATE_REGISTRY = {
             "\\location{Date Range | Location}  — date/location line",
             "\\sectionsep  — spacing between sections",
             "\\begin{tightemize} \\item ... \\end{tightemize}  — tight bullet list",
-            "\\skills{\\skillEntry{Category}{skill1, skill2, ...}}  — skills block",
+            # \skills and \skillEntry do NOT exist in PlushCV.cls — this entry
+            # was invented and would produce "Undefined control sequence".
+            # Skills go in a plain tightemize list like any other section.
+            "(no dedicated skills macro — use \\section{Skills} + a tightemize list)",
         ],
         "skills_pattern": (
             "\\section{Skills}\n"
@@ -253,7 +260,7 @@ TEMPLATE_REGISTRY = {
         ),
         "available_macros": [
             "\\resumeSubheading{Organization}{Location}{Title}{Dates}  — 4 args",
-            "\\resumeItem[Label]{Description}  — bullet with optional bold label",
+            "\\resumeItem{Label}{Description}  — 2 args, BOTH MANDATORY (bold label, then text)",
             "\\resumeSubHeadingListStart / \\resumeSubHeadingListEnd  — list wrappers",
             "\\resumeItemListStart / \\resumeItemListEnd  — item list wrappers",
         ],
@@ -267,9 +274,13 @@ TEMPLATE_REGISTRY = {
         ),
         "section_order": ["Education", "Experience", "Projects", "Technical Skills", "Achievements"],
         "notes": (
-            "Very similar to Jake's Resume but with slightly different macros. "
-            "\\resumeItem takes an optional label arg: \\resumeItem[Label]{Description}. "
-            "Single-file, pdflatex only."
+            "Very similar to Jake's Resume but the macros differ in ARITY — this is "
+            "the single most common source of fatal compile errors with this template. "
+            "\\resumeItem takes TWO MANDATORY arguments: \\resumeItem{Label}{Description}. "
+            "It is NOT \\resumeItem[Label]{Description} and NOT a single-argument macro "
+            "like Jake's. \\resumeSubItem likewise takes 2. Omitting the second argument "
+            "makes TeX swallow the following tokens and fail with "
+            "'Missing number, treated as zero'. Single-file, pdflatex only."
         ),
     },
 

@@ -44,6 +44,7 @@ def build_system_prompt(
     has_experience: bool,
     has_education: bool,
     target_pages=1,
+    macro_signatures: str = "",
 ) -> str:
     """
     Build the full system prompt incorporating:
@@ -55,6 +56,30 @@ def build_system_prompt(
 
     template_context = get_template_context(template_id)
 
+    # Signatures parsed from the actual template source. These are ground
+    # truth and override the hand-written registry text above, which has
+    # drifted before — describing Anubhav's two-mandatory-argument
+    # \\resumeItem as taking an optional label, which produced one-argument
+    # calls and a fatal "Missing number, treated as zero" compile error.
+    signature_block = ""
+    if macro_signatures:
+        signature_block = f"""
+═══════════════════════════════════════════════════════════════════════════════
+EXACT MACRO SIGNATURES FOR THIS TEMPLATE — AUTHORITATIVE
+═══════════════════════════════════════════════════════════════════════════════
+
+These were read directly from this template's source. Where anything above
+disagrees with this list, THIS LIST WINS.
+
+{macro_signatures}
+
+Supply EXACTLY the number of mandatory {{...}} arguments shown. A macro called
+with too few arguments silently swallows whatever follows it and produces a
+fatal, confusing compile error. If a macro takes 2 arguments and you only have
+one piece of information, still emit both groups — put the text in the first
+and leave the second as a short meaningful value, never omit the braces.
+"""
+
     return f"""You are a LaTeX template filler. You receive a LaTeX resume template and user data. Your ONLY job is to replace the sample/placeholder data in the template with the user's real data. You must preserve the EXACT structure, macros, and formatting of the template.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -62,14 +87,14 @@ TEMPLATE-SPECIFIC RULES
 ═══════════════════════════════════════════════════════════════════════════════
 
 {template_context}
-
+{signature_block}
 ═══════════════════════════════════════════════════════════════════════════════
 ABSOLUTE STRUCTURAL RULES
 ═══════════════════════════════════════════════════════════════════════════════
 
 1. **PRESERVE TEMPLATE STRUCTURE EXACTLY**: Keep every \\documentclass, \\usepackage, \\newcommand, \\renewcommand, \\pagestyle, margin setting, and macro definition UNCHANGED. Only modify the content inside \\begin{{document}}...\\end{{document}}.
 
-2. **USE ONLY MACROS DEFINED IN THE TEMPLATE**: See the AVAILABLE MACROS list above. NEVER invent new macros, rename existing ones, or use macros from a different template.
+2. **USE ONLY MACROS DEFINED IN THE TEMPLATE**: See the AVAILABLE MACROS list above. NEVER invent new macros, rename existing ones, or use macros from a different template. Every macro call MUST supply exactly the number of mandatory arguments that macro is defined with — no more, no fewer.
 
 3. **HEADER**: Replace the name, phone, email, linkedin, github in the header using the EXACT header pattern shown above. Keep the same structure — only change the data values.
 
@@ -104,7 +129,10 @@ COMPLETENESS RULES — CRITICAL (READ CAREFULLY)
 
 11a. **PROJECT BULLET MINIMUM (STRICT, NON-NEGOTIABLE)**: Every single project entry MUST have AT LEAST 3 separate bullet points (using the template's bullet macro, e.g. \\resumeItem{{...}}, \\item{{...}}, \\cvitem{{...}}). A project with only 1 or 2 bullets is a VALIDATION FAILURE. Each bullet must be a full sentence/clause (1-2 lines), describing a distinct aspect: what the project does, a specific feature or architectural detail, and a measurable outcome/impact/scale. Never collapse a project down to a single one-line summary.
 
-11b. **TECH STACK ON ITS OWN LINE (REQUIRED)**: In addition to the 3+ description bullets above, every project entry MUST include ONE dedicated bullet, placed FIRST in that project's bullet list, that states the tech stack ONLY — formatted as \\resumeItem{{\\textbf{{Tech Stack:}} React, Node.js, MongoDB, Docker}} (adapt the bold/label syntax to the template's bullet macro). This tech-stack line is separate from — and in addition to — the 3+ substantive description bullets; it does not count toward the minimum of 3. So every project entry has 4+ bullets total: 1 tech-stack line + 3+ description bullets. Still also put the tech stack in the project heading (Rule 14) where the template supports it — the dedicated bullet line is required regardless.
+11b. **TECH STACK ON ITS OWN LINE (REQUIRED)**: In addition to the 3+ description bullets above, every project entry MUST include ONE dedicated bullet, placed FIRST in that project's bullet list, stating the tech stack ONLY. Write it using this template's bullet macro **with that macro's exact argument count** (see the authoritative signature list):
+    - bullet macro taking ONE argument → \\resumeItem{{\\textbf{{Tech Stack:}} React, Node.js, MongoDB, Docker}}
+    - bullet macro taking TWO arguments → \\resumeItem{{Tech Stack}}{{React, Node.js, MongoDB, Docker}}
+    Never omit a mandatory argument to fit this pattern. This tech-stack line is separate from — and in addition to — the 3+ substantive description bullets; it does not count toward the minimum of 3. So every project entry has 4+ bullets total: 1 tech-stack line + 3+ description bullets. Still also put the tech stack in the project heading (Rule 14) where the template supports it — the dedicated bullet line is required regardless.
 
 12. **SECTION ORDER & BALANCE**: Arrange sections to fill the page naturally. Do not cluster all content at the top with empty space at the bottom. Use the RECOMMENDED SECTION ORDER from the template rules above.
 

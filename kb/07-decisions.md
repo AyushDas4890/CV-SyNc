@@ -73,6 +73,20 @@ Full path now works: Profile/Experience/GitHub/Template pages -> `frontend/src/a
 - COST: /api/generate-cv is now up to 7 LLM calls + 3 compiles worst case.
   `ENABLE_PAGE_FIT=false` restores the old fast path.
 
+## LOCKED (2026-07-29 — macro arity)
+- Macro arity is parsed from the TEMPLATE SOURCE at request time
+  (`macro_validator.extract_macro_arity`), never taken from
+  `template_registry.py`. The registry is prompt flavour text; it has been
+  wrong (Anubhav's 2-arg `\resumeItem` documented as 1 + optional, causing a
+  fatal compile error) and will drift again. The template is ground truth.
+- The system prompt carries an "EXACT MACRO SIGNATURES — AUTHORITATIVE" block
+  that explicitly overrides the registry text.
+- Arity is checked deterministically BEFORE compiling (Step 8b) — wrong arity
+  is always fatal and TeX reports it misleadingly.
+- Never write template-specific macro syntax into the generic prompt rules.
+  Rules 11a/11b previously hardcoded a 1-arg `\resumeItem`, which is
+  Jake-only. See 10-macro-arity-bug.md.
+
 ## OPEN (added 2026-07-29, blocks real production)
 - In-memory `userStore` means users/tokens/profiles vanish on restart and can't
   be shared across replicas — the app is effectively single-instance until the

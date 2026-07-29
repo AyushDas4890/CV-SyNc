@@ -33,6 +33,13 @@ from app.service.structure_reviewer import build_review_call, parse_review
 from app.prompts.review_prompts import (
     build_structure_repair_prompt,
     build_page_fit_prompt,
+    build_macro_arity_repair_prompt,
+)
+from app.service.macro_validator import (
+    extract_macro_arity,
+    check_macro_calls,
+    describe_macro_signatures,
+    format_problems,
 )
 
 config = Server_Credentials()
@@ -210,6 +217,70 @@ def strip_latex_comments(tex: str) -> str:
 def _finalize(tex: str, template_tex: str) -> str:
     """Sanitize + restore the original preamble. What actually gets compiled."""
     return replace_preamble_with_original(sanitize_generated_tex(tex), template_tex)
+
+
+async def enforce_macro_arity(
+    tex: str,
+    template_tex: str,
+    template_id: str,
+    max_attempts: int = 2,
+) -> tuple:
+    """
+    Deterministically check every macro call against the arity declared in the
+    template source, and repair any call that supplies too few arguments.
+
+    This runs BEFORE the compile because a wrong-arity call is always fatal and
+    the resulting TeX error ("Missing number, treated as zero") points at the
+    symptom rather than the cause. Catching it here is far cheaper and clearer
+    than letting the compile fail.
+
+    Returns (tex, remaining_problems).
+    """
+    arity = extract_macro_arity(template_tex)
+    if not arity:
+        return tex, []
+
+    problems = check_macro_calls(tex, arity)
+    if not problems:
+        return tex, []
+
+    signatures = describe_macro_signatures(arity)
+
+    for attempt in range(1, max_attempts + 1):
+        print(
+            f"[LLM_BRAIN] Macro arity: {len(problems)} bad call(s) "
+            f"(attempt {attempt}/{max_attempts})"
+        )
+        for p in problems[:5]:
+            print(
+                f"[LLM_BRAIN]   line {p['line']}: \\{p['macro']} "
+                f"needs {p['expected']}, got {p['found']}"
+            )
+
+        repair_prompt = build_macro_arity_repair_prompt(
+            template_tex, tex, format_problems(problems), signatures
+        )
+        system_prompt = build_system_prompt(
+            template_id=template_id,
+            has_experience=True,
+            has_education=True,
+            target_pages="auto",
+            macro_signatures=signatures,
+        )
+        repaired = await call_llm_async(system_prompt, repair_prompt)
+        if not _has_valid_tex(repaired):
+            print("[LLM_BRAIN] Macro arity repair returned no valid LaTeX — stopping")
+            break
+
+        candidate = _finalize(repaired, template_tex)
+        remaining = check_macro_calls(candidate, arity)
+        if len(remaining) < len(problems):
+            tex, problems = candidate, remaining
+        if not problems:
+            print("[LLM_BRAIN] Macro arity: all calls fixed")
+            return tex, []
+
+    return tex, problems
 
 
 async def run_structure_review(
@@ -427,10 +498,16 @@ async def generate_cv(
     user_prompt, has_experience, has_education = build_user_prompt(
         user_profile, selected_repos, clean_template_tex
     )
+    # Ground-truth macro signatures parsed from the template itself, so the
+    # LLM is told real arities rather than the registry's hand-written text.
+    template_arity = extract_macro_arity(template_tex)
+    macro_signatures = describe_macro_signatures(template_arity)
+
     system_prompt = build_system_prompt(
         template_id=template_id,
         has_experience=has_experience,
         has_education=has_education,
+        macro_signatures=macro_signatures,
         target_pages=target_pages,
     )
 
@@ -508,6 +585,23 @@ async def generate_cv(
     edited_tex = replace_preamble_with_original(edited_tex, template_tex)
 
     warnings: List[str] = []
+
+    # ── Step 8b: Macro arity gate (deterministic, pre-compile) ────────────
+    # A macro called with too few mandatory arguments is ALWAYS a fatal
+    # compile error, and TeX reports it misleadingly. Catch and repair it here
+    # rather than paying for a compile round-trip to find out.
+    edited_tex, arity_problems = await enforce_macro_arity(
+        edited_tex, template_tex, template_id
+    )
+    if arity_problems:
+        warnings.append(
+            f"{len(arity_problems)} macro call(s) still have the wrong argument count "
+            "and will likely fail to compile: "
+            + "; ".join(
+                f"\\{p['macro']} (line {p['line']}) needs {p['expected']}, got {p['found']}"
+                for p in arity_problems[:5]
+            )
+        )
 
     # ── Step 9: LLM structure review against the template ─────────────────
     # output_validator checks that required things are PRESENT; this checks

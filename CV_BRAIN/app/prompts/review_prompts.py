@@ -106,6 +106,44 @@ DOCUMENT TO FIX:
 """
 
 
+def build_macro_arity_repair_prompt(
+    template_tex: str,
+    generated_tex: str,
+    problems_text: str,
+    signatures: str,
+) -> str:
+    """
+    Repair macro calls that supply too few mandatory arguments.
+
+    Deterministically detected, so the instruction can be blunt and specific
+    rather than asking the model to go looking for the problem.
+    """
+    return f"""Your LaTeX output calls template macros with the WRONG NUMBER OF ARGUMENTS. This is a FATAL compile error — TeX swallows whatever follows the incomplete call and dies with a misleading message such as "Missing number, treated as zero".
+
+EXACT PROBLEMS FOUND:
+{problems_text}
+
+THE TEMPLATE'S TRUE MACRO SIGNATURES (authoritative):
+{signatures}
+
+Fix every listed call so it supplies exactly the required number of {{...}} groups.
+- If a macro needs 2 arguments and you only wrote 1, split your content sensibly:
+  a short bold label in the first group, the descriptive text in the second.
+  Example: \\resumeItem{{Project Overview}} → \\resumeItem{{Project Overview}}{{Built a ... that ...}}
+- Do NOT delete the bullet to dodge the problem, and do NOT invent facts to pad
+  the extra argument — re-use the wording already present.
+- Change nothing else.
+
+Return the COMPLETE LaTeX document, \\documentclass through \\end{{document}}.
+Raw LaTeX only. No markdown fences, no commentary.
+
+=========================================
+DOCUMENT TO FIX:
+=========================================
+{generated_tex}
+"""
+
+
 def build_page_fit_prompt(
     action: str,
     current_length: float,

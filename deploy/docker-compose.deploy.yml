@@ -1,0 +1,163 @@
+# CV-Sync — public internet deployment, HTTPS via Caddy + Let's Encrypt.
+#
+#   docker compose -f docker-compose.deploy.yml --env-file cvsync.env up -d
+#
+# Like docker-compose.release.yml this has NO build: sections and no bind
+# mounts of application code — it runs from the images. The only difference is
+# that Caddy terminates TLS in front, and the app services are NOT published
+# to the host: only Caddy's 80/443 are reachable from outside.
+#
+# BEFORE YOU RUN THIS, on the server:
+#   1. Point DNS A records for app./api./brain./build.<your-domain> at this IP.
+#   2. Open ports 80 and 443 in the firewall.
+#   3. Edit deploy/Caddyfile and replace example.com with your domain.
+#   4. Rebuild the frontend image with your public URLs — its API endpoints are
+#      inlined at BUILD time and would otherwise still point at localhost:
+#        docker compose build \
+#          --build-arg VITE_API_URL=https://api.<your-domain> \
+#          --build-arg VITE_LLM_BRAIN_URL=https://brain.<your-domain> \
+#          --build-arg VITE_CV_BUILDER_URL=https://build.<your-domain> \
+#          frontend
+#   5. Update your GitHub OAuth App's callback URL to
+#        https://api.<your-domain>/api/auth/github/callback
+#
+# KNOWN LIMITATION: auth-service keeps users and profiles in an IN-MEMORY
+# store (see kb/02). Sessions survive a restart because they live in Redis,
+# but the user records they point at do not. Every redeploy or crash logs
+# everyone out and drops saved profile/education data. Fix that before calling
+# this production.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for Let\'s Encrypt}
+    volumes:
+      # Config is a file you edit on the server, so it IS a bind mount — but
+      # it is config, not application code, and the app does not need it.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates must persist or you will re-issue on every restart and
+      # hit Let's Encrypt rate limits.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+      - auth-service
+      - cv-brain
+      - cv-builder
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  cv-builder:
+    image: cvsync/cv-builder:${CVSYNC_TAG:-latest}
+    # No ports: — reachable only through Caddy.
+    expose:
+      - "3000"
+    environment:
+      PORT: 3000
+      logger_level: ${LOGGER_LEVEL:-warn}
+      COMPILE_TIMEOUT_MS: ${COMPILE_TIMEOUT_MS:-60000}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  cv-brain:
+    image: cvsync/cv-brain:${CVSYNC_TAG:-latest}
+    expose:
+      - "8000"
+    environment:
+      PORT: 8000
+      ENV: production
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      GROQ_TEMPERATURE: ${GROQ_TEMPERATURE:-0.1}
+      GROQ_MAX_TOKENS: ${GROQ_MAX_TOKENS:-8192}
+      CV_BUILDER_URL: http://cv-builder:3000
+      FRONTEND_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL e.g. https://app.example.com}
+      # Must be the public frontend origin. /api/generate-cv spends real LLM
+      # credits, so a wildcard here is money someone else gets to spend.
+      ALLOWED_ORIGINS: ${PUBLIC_APP_URL}
+      PAGE_LENGTH_BANDS: ${PAGE_LENGTH_BANDS:-1,2}
+      ENABLE_PAGE_FIT: ${ENABLE_PAGE_FIT:-true}
+      PAGE_FIT_MAX_ATTEMPTS: ${PAGE_FIT_MAX_ATTEMPTS:-3}
+      ENABLE_STRUCTURE_REVIEW: ${ENABLE_STRUCTURE_REVIEW:-true}
+    depends_on:
+      cv-builder:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  auth-service:
+    image: cvsync/auth-service:${CVSYNC_TAG:-latest}
+    expose:
+      - "4000"
+    environment:
+      PORT: 4000
+      # Turns on secure cookies. Safe here because Caddy gives us real HTTPS —
+      # over plain HTTP the symptom is "log in, immediately logged out".
+      NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET:?generate with openssl rand -hex 32}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?required}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?required}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:?must match your GitHub OAuth App exactly}
+      GITHUB_OAUTH_SCOPE: ${GITHUB_OAUTH_SCOPE:-read:user}
+      FRONTEND_URL: ${PUBLIC_APP_URL}
+      USE_REDIS: "true"
+      REDIS_URL: redis://redis:6379
+      # app.example.com and api.example.com are same-site, so lax works and is
+      # safer than none. Only set none if you split across different domains.
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    # NOTE: this image must have been built with your public VITE_* URLs.
+    # A frontend image built for localhost will load over HTTPS and then fail
+    # every API call, because the browser resolves localhost to the visitor's
+    # own machine.
+    image: cvsync/frontend:${CVSYNC_TAG:-latest}
+    expose:
+      - "5173"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      cv-brain:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:

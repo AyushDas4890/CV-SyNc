@@ -234,3 +234,21 @@ logged out. See `kb/08-bugfix-deploy-2026-07-29.md`.
 docker run --rm --entrypoint sh cvsync/cv-brain -c 'ls -a /app/.env'
 # ls: /app/.env: No such file or directory
 ```
+
+---
+
+## Reaching it from anywhere (public internet)
+
+See **[deploy/README.md](deploy/README.md)**. Short version:
+
+- **Quick demo today** — Cloudflare Tunnel from the machine already running it.
+  Free HTTPS, no port forwarding. Note the frontend must be rebuilt against the
+  tunnel URLs or every API call fails on `localhost`.
+- **Real deployment** — one small VPS + `deploy/docker-compose.deploy.yml` +
+  `deploy/Caddyfile`. Automatic Let's Encrypt certs, app services reachable only
+  through Caddy, ~$5–7/month.
+- **Not Vercel** — `cvsync/cv-builder` is a 2.2 GB TeX Live image running
+  `latexmk` for up to 60 s per compile, which does not fit a serverless model.
+
+Blocking caveat before real users: `auth-service` stores users and profiles
+**in memory**, so a redeploy or crash drops them. See `kb/02`.

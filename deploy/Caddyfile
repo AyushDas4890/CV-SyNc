@@ -1,0 +1,55 @@
+# Caddy reverse proxy for CV-Sync.
+#
+# Caddy obtains and renews Let's Encrypt certificates automatically — all four
+# hostnames below get real HTTPS with no manual cert work, provided:
+#   1. each hostname's DNS A record points at this server's public IP, and
+#   2. ports 80 and 443 are reachable from the internet.
+#
+# Replace example.com throughout with your own domain, and set
+# ACME_EMAIL in your env file so Let's Encrypt can reach you about renewals.
+#
+# WHY SUBDOMAINS OF ONE DOMAIN: app.example.com and api.example.com are
+# "same-site", so the session cookie works with SameSite=Lax. Splitting the
+# frontend and API across two different registrable domains would force
+# SameSite=None, which is more fragile and blocked by some privacy settings.
+
+{
+	email {$ACME_EMAIL}
+}
+
+# ── Frontend (the UI users open) ─────────────────────────────────────────
+app.example.com {
+	reverse_proxy frontend:5173
+	encode gzip zstd
+}
+
+# ── Auth service (OAuth + session cookie) ────────────────────────────────
+api.example.com {
+	reverse_proxy auth-service:4000
+	encode gzip zstd
+}
+
+# ── CV_BRAIN (LLM generation) ────────────────────────────────────────────
+brain.example.com {
+	reverse_proxy cv-brain:8000
+	encode gzip zstd
+}
+
+# ── CV_BUILDER (LaTeX compile) ───────────────────────────────────────────
+# WARNING: this endpoint runs a real TeX compiler on submitted input. It is
+# sandboxed (latexmk with -no-shell-escape, openin_any/openout_any=p, 60s
+# timeout, job dir deleted after) but it is still public CPU that anyone can
+# spend. There is no rate limit here because stock Caddy has no rate_limit
+# directive — it needs the caddy-ratelimit plugin and a custom image:
+#
+#   FROM caddy:2-builder AS builder
+#   RUN xcaddy build --with github.com/mholt/caddy-ratelimit
+#   FROM caddy:2
+#   COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+#
+# Until then, keep an eye on cv-builder's CPU, or put Cloudflare (free tier)
+# in front and rate-limit /api/compile there.
+build.example.com {
+	reverse_proxy cv-builder:3000
+	encode gzip zstd
+}

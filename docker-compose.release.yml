@@ -31,7 +31,7 @@ services:
       retries: 5
 
   cv-builder:
-    image: cvsync/cv-builder:${CVSYNC_TAG:-latest}
+    image: ${CVBUILDER_IMAGE:-cvsync/cv-builder}:${CVSYNC_TAG:-latest}
     ports:
       - "${CV_BUILDER_PORT:-3000}:3000"
     environment:
@@ -46,7 +46,7 @@ services:
       start_period: 30s
 
   cv-brain:
-    image: cvsync/cv-brain:${CVSYNC_TAG:-latest}
+    image: ${CVBRAIN_IMAGE:-cvsync/cv-brain}:${CVSYNC_TAG:-latest}
     ports:
       - "${CV_BRAIN_PORT:-8000}:8000"
     environment:
@@ -78,7 +78,7 @@ services:
       start_period: 20s
 
   auth-service:
-    image: cvsync/auth-service:${CVSYNC_TAG:-latest}
+    image: ${AUTH_IMAGE:-cvsync/auth-service}:${CVSYNC_TAG:-latest}
     ports:
       - "${AUTH_PORT:-4000}:4000"
     environment:
@@ -110,7 +110,7 @@ services:
       start_period: 10s
 
   frontend:
-    image: cvsync/frontend:${CVSYNC_TAG:-latest}
+    image: ${FRONTEND_IMAGE:-cvsync/frontend}:${CVSYNC_TAG:-latest}
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:

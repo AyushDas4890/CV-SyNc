@@ -195,3 +195,52 @@ explicitly that rewording is insufficient and whole bullets/entries must go.
 **Still not verified**: a run against live LLM APIs (no keys here). The loop's
 mechanics, measurement and prompts are now real-compile-verified; what the
 model actually returns is not.
+
+## Measured latency (2026-07-30)
+
+First real numbers, measured against the running Docker stack on a local
+machine with no contention and no tunnel in the path. Real conditions are only
+slower.
+
+| Request | Time | Notes |
+|---|---|---|
+| `POST /api/generate-cv` | **55–95 s** | all the latency lives here |
+| `POST /api/compile` | **1.6 s** | effectively free |
+
+Per-template totals (generate + compile):
+
+| Template | Total | Page-fit attempts |
+|---|---|---|
+| Jake, clean run | 81 s | 0 — hit the band first try |
+| ModernCV | 101 s | 3, still missed |
+| ModernCV, repeat | 62 s | 3, still missed |
+
+**The variance matters more than the median.** The same template with the same
+settings and the same 3 page-fit attempts took 101 s and then 62 s — a 35 s
+spread from LLM response time alone. Any latency budget has to be built around
+the tail, not the average.
+
+Page fitting is what moves the number: the difference between the 81 s and
+101 s rows is 3 extra LLM calls plus 3 measurement compiles.
+`ENABLE_PAGE_FIT=false` should land around 30-45 s.
+
+### Why this is a deployment constraint, not just a UX one
+
+Cloudflare's proxy terminates any request that takes over **100 s** on the
+Free, Pro and Business plans (Error 524; raising it is Enterprise-only). So
+`/api/generate-cv` behind a Cloudflare Tunnel sits inside the limit on a good
+run and crosses it on a slow one.
+
+That failure is worse than a plain timeout: the CV generates successfully, the
+LLM credits are spent, and the user still sees an error, because the proxy hung
+up before the response came back. Intermittent, and it looks random.
+
+Options if the app is ever fronted by Cloudflare:
+- `ENABLE_PAGE_FIT=false` — removes the tail risk outright
+- put the brain hostname on a tunnel with no cap (ngrok, Tailscale Funnel);
+  Cloudflare's own docs recommend moving long requests off the proxy
+- make generation async (job id + poll) — correct, and the most work
+
+Note that the page-fit compiles do **not** cross the network: CV_BRAIN reaches
+CV_BUILDER at `http://cv-builder:3000` on the internal Docker network. Only the
+browser's two calls traverse a tunnel.

@@ -24,7 +24,9 @@ if [[ -z "$USER" ]]; then
 fi
 
 # Fail early with a clear message rather than a confusing denied-push later.
-if ! docker info 2>/dev/null | grep -qi "^ *Username:"; then
+# `docker info` does not reliably print a Username line across Docker Desktop
+# versions, so ask the credential store directly via `docker login`.
+if ! docker login 2>&1 | grep -qi "Login Succeeded"; then
   echo "ERROR: not logged in to Docker Hub. Run:  docker login" >&2
   exit 1
 fi

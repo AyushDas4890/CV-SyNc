@@ -4,6 +4,13 @@ document class, available macros, header pattern, and section structure.
 
 This metadata is injected into the LLM system prompt so it knows EXACTLY what
 LaTeX constructs are valid for a given template and will compile correctly.
+
+`supports_hyperlinks` records whether the template's preamble actually makes
+\\href available (directly, via its .cls, or via a class option such as AltaCV's
+`withhyper`). It is NOT decoration: the generated document's preamble is
+replaced with the original template's before compiling, so the model cannot
+rescue a missing \\usepackage{hyperref} by adding one. dphang is the only
+template without it — see latex_sanitizer.strip_hyperlinks.
 """
 
 TEMPLATE_REGISTRY = {
@@ -12,6 +19,7 @@ TEMPLATE_REGISTRY = {
     "Jake_s_Resume__3_": {
         "display_name": "Jake's Resume",
         "engine": "pdflatex",
+        "supports_hyperlinks": True,
         "document_class": "article (letterpaper, 11pt)",
         "header_pattern": (
             "\\begin{center} block with:\n"
@@ -52,6 +60,7 @@ TEMPLATE_REGISTRY = {
     "AltaCV_Template__1_": {
         "display_name": "AltaCV",
         "engine": "lualatex",
+        "supports_hyperlinks": True,
         "document_class": "altacv (10pt, a4paper, withhyper)",
         "header_pattern": (
             "\\name{First Last}\n"
@@ -94,6 +103,7 @@ TEMPLATE_REGISTRY = {
     "Deedy_CV__1_": {
         "display_name": "Deedy CV",
         "engine": "xelatex",
+        "supports_hyperlinks": True,
         "document_class": "deedy-resume-openfont",
         "header_pattern": (
             "\\namesection{First}{Last}{\n"
@@ -126,92 +136,11 @@ TEMPLATE_REGISTRY = {
         ),
     },
 
-    # ── 4. Awesome CV (xelatex) ──────────────────────────────────────────────
-    "Awesome_CV__3_": {
-        "display_name": "Awesome CV",
-        "engine": "xelatex",
-        "document_class": "awesome-cv (11pt, a4paper)",
-        "header_pattern": (
-            "\\name{First}{Last}\n"
-            "\\position{Job Title{\\enskip\\cdotp\\enskip}Specialization}\n"
-            "\\address{Full Address}\n"
-            "\\mobile{(+XX) XX-XXXX-XXXX}\n"
-            "\\email{email@example.com}\n"
-            "\\homepage{www.example.com}\n"
-            "\\github{github-id}\n"
-            "\\linkedin{linkedin-id}\n"
-            "\\quote{\"Motivational quote\"}"
-        ),
-        "available_macros": [
-            "\\cvsection{Section Title}  — section header",
-            "\\cventry{Title}{Organization}{Location}{Date Range}{Description/Bullets}  — 5 args",
-            "\\cvsubentry{Title}{Date Range}{Description}{Details}  — 4 args",
-            "\\begin{cvitems} \\item{Text} \\end{cvitems}  — bullet list inside cventry",
-            "\\begin{cventries} ... \\end{cventries}  — wraps multiple cventry",
-            "\\begin{cvhonors} \\cvhonor{Award}{Org}{Location}{Date} \\end{cvhonors}  — honors/awards",
-            "\\makecvheader[C]  — prints the header (C=center, L=left, R=right)",
-            "\\makecvfooter{\\today}{Name~~~·~~~Résumé}{\\thepage}  — footer",
-        ],
-        "skills_pattern": (
-            "Use \\cvsection{Skills} with \\begin{cvitems} containing \\item{} entries, OR\n"
-            "plain text with categories."
-        ),
-        "section_order": ["Summary", "Experience", "Honors", "Projects", "Education", "Skills"],
-        "notes": (
-            "Multi-file template with \\input{resume/section.tex} for each section. "
-            "The concatenated output from CV_BUILDER inlines all \\input{} files. "
-            "Uses awesome-cv.cls with custom fonts in fonts/ directory. "
-            "\\fontdir[fonts/] sets the font path. MUST compile with xelatex. "
-            "Header is set via preamble commands, NOT inside \\begin{document}."
-        ),
-    },
-
-    # ── 5. PlushCV (xelatex) ─────────────────────────────────────────────────
-    "PlushCV__2_": {
-        "display_name": "PlushCV",
-        "engine": "xelatex",
-        "document_class": "plushcv",
-        "header_pattern": (
-            "\\namesection{First}{Last}{Job Title}{\n"
-            "  \\contactline\n"
-            "    {\\href{URL}{homepage}}\n"
-            "    {\\href{GITHUB_URL}{github-id}}\n"
-            "    {\\href{LINKEDIN_URL}{linkedin-id}}\n"
-            "    {\\href{mailto:EMAIL}{EMAIL}}\n"
-            "    {\\href{tel:PHONE}{PHONE}}\n"
-            "}"
-        ),
-        "available_macros": [
-            "\\section{Section Title}  — section header",
-            "\\runsubsection{Organization/Project}  — bold entry name",
-            "\\descript{| Role/Description}  — role description",
-            "\\location{Date Range | Location}  — date/location line",
-            "\\sectionsep  — spacing between sections",
-            "\\begin{tightemize} \\item ... \\end{tightemize}  — tight bullet list",
-            # \skills and \skillEntry do NOT exist in PlushCV.cls — this entry
-            # was invented and would produce "Undefined control sequence".
-            # Skills go in a plain tightemize list like any other section.
-            "(no dedicated skills macro — use \\section{Skills} + a tightemize list)",
-        ],
-        "skills_pattern": (
-            "\\section{Skills}\n"
-            "\\begin{tabular}{rl}\n"
-            "  \\textsc{Languages}: & Python, Java \\\\\n"
-            "  \\textsc{Frameworks}: & React, Node.js\n"
-            "\\end{tabular}"
-        ),
-        "section_order": ["Education", "Experience", "Projects", "Skills"],
-        "notes": (
-            "Two-column layout similar to Deedy but with different styling. "
-            "Uses PlushCV.cls with custom fonts and icons. "
-            "MUST compile with xelatex. Uses minipage for columns."
-        ),
-    },
-
-    # ── 6. ModernCV (pdflatex) ───────────────────────────────────────────────
+    # ── 4. ModernCV (pdflatex) ───────────────────────────────────────────────
     "ModernCV_and_Cover_Letter_Template__2_": {
         "display_name": "ModernCV",
         "engine": "pdflatex",
+        "supports_hyperlinks": True,
         "document_class": "moderncv (11pt, a4paper, sans)",
         "header_pattern": (
             "\\name{First}{Last}\n"
@@ -241,15 +170,23 @@ TEMPLATE_REGISTRY = {
         "section_order": ["Education", "Experience", "Skills", "Languages", "Interests"],
         "notes": (
             "Single-file template with moderncv class. Style and color set via preamble. "
-            "Also includes a cover letter section (\\recipient, \\opening, \\closing). "
-            "Compiles with pdflatex. Do NOT use fontspec."
+            "Compiles with pdflatex. Do NOT use fontspec. "
+            "PLACEHOLDER SECTIONS — DELETE THEM: this template ships with fully "
+            "populated demo sections (Languages, Interests, Extra 1/2/3, a "
+            "\\subsection{Vocational} heading) and a whole cover letter after "
+            "\\clearpage (\\recipient, \\opening, \\makelettertitle, \\closing, "
+            "\\enclosure). None of that is the candidate's data. Delete every one "
+            "of those sections and the entire cover letter outright — do NOT "
+            "invent languages, hobbies or interests to fill them. Keeping them "
+            "both fabricates facts and pushes the CV onto a second page."
         ),
     },
 
-    # ── 7. Resume Template by Anubhav (pdflatex) ────────────────────────────
+    # ── 5. Resume Template by Anubhav (pdflatex) ────────────────────────────
     "Resume_Template_by_Anubhav__2_": {
         "display_name": "Anubhav Resume",
         "engine": "pdflatex",
+        "supports_hyperlinks": True,
         "document_class": "article (a4paper, 20pt)",
         "header_pattern": (
             "\\begin{center}\n"
@@ -259,10 +196,16 @@ TEMPLATE_REGISTRY = {
             "\\end{center}"
         ),
         "available_macros": [
-            "\\resumeSubheading{Organization}{Location}{Title}{Dates}  — 4 args",
+            "\\resumeSubheading{Organization}{Location}{Title}{Dates}  — 4 args, ALL MANDATORY (Education and Experience entries only)",
+            "\\resumeSubItem{Project Name (Tech Stack)}{Description}  — 2 args, THIS IS THE PROJECTS MACRO",
             "\\resumeItem{Label}{Description}  — 2 args, BOTH MANDATORY (bold label, then text)",
             "\\resumeSubHeadingListStart / \\resumeSubHeadingListEnd  — list wrappers",
             "\\resumeItemListStart / \\resumeItemListEnd  — item list wrappers",
+            # Defined in the template but never used by it, and its body is
+            # `\item\small{ {\vspace{-2pt}} }` — argument #1 is DISCARDED, so
+            # any text passed to it silently vanishes. It also expands to
+            # \item, so calling it outside a list gives "Lonely \item".
+            "\\resumeItemWithoutTitle  — DO NOT USE (throws its argument away; also fatal outside a list)",
         ],
         "skills_pattern": (
             "\\begin{itemize}[leftmargin=0.15in, label={}]\n"
@@ -280,21 +223,33 @@ TEMPLATE_REGISTRY = {
             "It is NOT \\resumeItem[Label]{Description} and NOT a single-argument macro "
             "like Jake's. \\resumeSubItem likewise takes 2. Omitting the second argument "
             "makes TeX swallow the following tokens and fail with "
-            "'Missing number, treated as zero'. Single-file, pdflatex only."
+            "'Missing number, treated as zero'. Single-file, pdflatex only. "
+            "PROJECTS: this template has NO project-heading macro — there is no "
+            "\\resumeProjectHeading here (that is Jake's). Each project is ONE "
+            "\\resumeSubItem{Project Name (Tech Stack)}{What it does, key detail, impact. "
+            "Tech: ...} inside \\resumeSubHeadingListStart/End, exactly as the sample "
+            "does. Do NOT use \\resumeSubheading for a project: it needs FOUR arguments "
+            "and calling it with two is a fatal compile error."
         ),
     },
 
-    # ── 8. dphang CV Template (pdflatex) ─────────────────────────────────────
+    # ── 6. dphang CV Template (pdflatex) ─────────────────────────────────────
     "dphang_CV_Template__1_": {
         "display_name": "dphang CV",
         "engine": "pdflatex",
+        # The ONLY template whose preamble never loads hyperref — no
+        # \usepackage{hyperref}, no class that pulls it in. \href here is a
+        # fatal "Undefined control sequence", and adding the package is not an
+        # option because the preamble is restored from the original template
+        # before compiling.
+        "supports_hyperlinks": False,
         "document_class": "article (11pt, letterpaper)",
         "header_pattern": (
             "\\begin{center}\n"
             "  {\\LARGE \\textbf{NAME}} \\\\\n"
             "  Location \\\\\n"
-            "  PHONE ~ \\textbar ~ \\href{mailto:EMAIL}{EMAIL} ~ \\textbar ~\n"
-            "  \\href{LINKEDIN}{LinkedIn} ~ \\textbar ~ \\href{GITHUB}{GitHub}\n"
+            "  PHONE ~ \\textbar ~ EMAIL ~ \\textbar ~\n"
+            "  linkedin.com/in/ID ~ \\textbar ~ github.com/ID\n"
             "\\end{center}"
         ),
         "available_macros": [
@@ -315,7 +270,10 @@ TEMPLATE_REGISTRY = {
             "Simple article-based template with \\headerrow for entries. "
             "Uses fontawesome5 for icons. Uses standard \\begin{itemize} for bullets. "
             "No custom resume macros — uses plain LaTeX with \\headerrow. "
-            "Compiles with pdflatex."
+            "Compiles with pdflatex. "
+            "NO HYPERREF: this preamble does not load hyperref, so \\href and "
+            "\\url are UNDEFINED and fatal. Write every link as plain text "
+            "(github.com/ID, linkedin.com/in/ID, the email address itself)."
         ),
     },
 }

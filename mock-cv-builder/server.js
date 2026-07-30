@@ -23,8 +23,6 @@ const TEMPLATE_FOLDER_MAP = {
   Jake_s_Resume__3_: "jake",
   AltaCV_Template__1_: "altacv",
   Deedy_CV__1_: "deedy",
-  Awesome_CV__3_: "awesome-cv",
-  PlushCV__2_: "plushcv",
   ModernCV_and_Cover_Letter_Template__2_: null, // not in local cv-templates
   Resume_Template_by_Anubhav__2_: "anubhav",
   dphang_CV_Template__1_: "dphang",

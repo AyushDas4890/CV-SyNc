@@ -12,9 +12,7 @@ const TEMPLATES = [
   { id: "dphang",     name: "dphang CV",          brainId: "dphang_CV_Template__1_" },
   { id: "anubhav",    name: "Resume by Anubhav",  brainId: "Resume_Template_by_Anubhav__2_" },
   { id: "altacv",     name: "AltaCV",              brainId: "AltaCV_Template__1_" },
-  { id: "plushcv",    name: "PlushCV",             brainId: "PlushCV__2_" },
   { id: "deedy",      name: "Deedy CV",            brainId: "Deedy_CV__1_" },
-  { id: "awesome-cv", name: "Awesome CV",          brainId: "Awesome_CV__3_" },
 ];
 
 // Lookup helpers — use these instead of hand-rolling id <-> brainId conversions elsewhere

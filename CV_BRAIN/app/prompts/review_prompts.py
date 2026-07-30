@@ -111,16 +111,32 @@ def build_macro_arity_repair_prompt(
     generated_tex: str,
     problems_text: str,
     signatures: str,
+    undefined_text: str = "",
 ) -> str:
     """
-    Repair macro calls that supply too few mandatory arguments.
+    Repair macro calls that supply too few mandatory arguments, and calls to
+    macros this template does not define at all.
 
     Deterministically detected, so the instruction can be blunt and specific
     rather than asking the model to go looking for the problem.
     """
-    return f"""Your LaTeX output calls template macros with the WRONG NUMBER OF ARGUMENTS. This is a FATAL compile error — TeX swallows whatever follows the incomplete call and dies with a misleading message such as "Missing number, treated as zero".
+    undefined_block = ""
+    if undefined_text:
+        undefined_block = f"""
+UNDEFINED MACROS — THIS TEMPLATE DOES NOT PROVIDE THESE (fatal):
+{undefined_text}
 
-EXACT PROBLEMS FOUND:
+Each of these is an immediate "Undefined control sequence". They are macros from
+a DIFFERENT template or invented outright. Replace every one with this
+template's own equivalent from the signature list below — for a bullet that is
+usually plain \\item, optionally with \\textbf{{...}} for a label. Do NOT define
+the missing macro yourself with \\newcommand, and do NOT delete the content:
+keep the wording, change only the macro wrapping it.
+"""
+
+    return f"""Your LaTeX output will NOT compile. Fix exactly the problems listed below.
+{undefined_block}
+MACRO CALLS WITH THE WRONG NUMBER OF ARGUMENTS (fatal — TeX swallows whatever follows the incomplete call and dies with a misleading message such as "Missing number, treated as zero"):
 {problems_text}
 
 THE TEMPLATE'S TRUE MACRO SIGNATURES (authoritative):
@@ -129,7 +145,8 @@ THE TEMPLATE'S TRUE MACRO SIGNATURES (authoritative):
 Fix every listed call so it supplies exactly the required number of {{...}} groups.
 - If a macro needs 2 arguments and you only wrote 1, split your content sensibly:
   a short bold label in the first group, the descriptive text in the second.
-  Example: \\resumeItem{{Project Overview}} → \\resumeItem{{Project Overview}}{{Built a ... that ...}}
+  Example, using whatever the macro is actually called in THIS template:
+  \\thatmacro{{Project Overview}} → \\thatmacro{{Project Overview}}{{Built a ... that ...}}
 - Do NOT delete the bullet to dodge the problem, and do NOT invent facts to pad
   the extra argument — re-use the wording already present.
 - Change nothing else.

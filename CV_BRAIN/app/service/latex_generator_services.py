@@ -24,6 +24,7 @@ from app.prompts.template_registry import get_template_metadata
 from app.service.latex_sanitizer import (
     sanitize_generated_tex,
     replace_preamble_with_original,
+    strip_hyperlinks,
     fallback_latex_filler,
 )
 from app.service.output_validator import validate_output
@@ -39,9 +40,13 @@ from app.service.macro_validator import (
     extract_macro_arity,
     check_macro_calls,
     check_structural_balance,
+    check_lonely_items,
+    check_undefined_macros,
+    collect_defined_macros,
     describe_macro_signatures,
     format_problems,
     format_structural_problems,
+    format_undefined_problems,
     fix_duplicate_label_colons,
 )
 
@@ -217,9 +222,47 @@ def strip_latex_comments(tex: str) -> str:
 
 # ── Refinement passes ────────────────────────────────────────────────────────
 
-def _finalize(tex: str, template_tex: str) -> str:
-    """Sanitize + restore the original preamble. What actually gets compiled."""
-    return replace_preamble_with_original(sanitize_generated_tex(tex), template_tex)
+def _finalize(tex: str, template_tex: str, template_id: str = "") -> str:
+    """
+    Sanitize + restore the original preamble. What actually gets compiled.
+
+    Templates whose preamble never loads hyperref get their \\href/\\url calls
+    flattened to plain text here. This has to happen at the same choke point as
+    the preamble swap: the swap is what makes the problem unfixable by the model
+    (any \\usepackage{hyperref} it adds is thrown away), and every repair path in
+    this module funnels through _finalize, so stripping here means no later LLM
+    pass can reintroduce a broken link.
+    """
+    tex = replace_preamble_with_original(sanitize_generated_tex(tex), template_tex)
+
+    meta = get_template_metadata(template_id) if template_id else None
+    if meta and not meta.get("supports_hyperlinks", True):
+        stripped = strip_hyperlinks(tex)
+        if stripped != tex:
+            print(
+                f"[LLM_BRAIN] {template_id} has no hyperref — "
+                "flattened \\href/\\url calls to plain text"
+            )
+        tex = stripped
+    return tex
+
+
+def _describe_problem(p: dict) -> str:
+    """
+    One-line description of a gate problem, for a user-facing warning.
+
+    enforce_macro_arity returns three different problem shapes — wrong-arity
+    calls carry expected/found, undefined macros carry neither, brace/env
+    problems carry a detail string and no macro name — so the fields have to be
+    probed rather than assumed.
+    """
+    line = p.get("line", "?")
+    if "detail" in p:
+        return f"line {line}: {p['detail']}"
+    macro = "\\" + p.get("macro", "?")
+    if "expected" in p:
+        return f"{macro} (line {line}) needs {p['expected']}, got {p['found']}"
+    return f"{macro} (line {line}) is not defined by this template"
 
 
 async def enforce_macro_arity(
@@ -229,18 +272,23 @@ async def enforce_macro_arity(
     max_attempts: int = 2,
 ) -> tuple:
     """
-    Deterministically check every macro call against the arity declared in the
-    template source, and repair any call that supplies too few arguments.
+    Deterministically check every macro call against the template source, and
+    repair what is broken. Three classes of fatal problem are caught:
 
-    This runs BEFORE the compile because a wrong-arity call is always fatal and
-    the resulting TeX error ("Missing number, treated as zero") points at the
-    symptom rather than the cause. Catching it here is far cheaper and clearer
-    than letting the compile fail.
+      - calls that supply too few mandatory arguments (wrong arity)
+      - calls to macros this template does not provide at all (undefined)
+      - unbalanced braces and mismatched environments
+
+    This runs BEFORE the compile because all three are always fatal and TeX
+    reports them misleadingly — "Missing number, treated as zero" for arity,
+    and an "Undefined control sequence" whose line number points at the symptom.
+    Catching them here is far cheaper and clearer than letting the compile fail.
 
     Returns (tex, remaining_problems).
     """
     arity = extract_macro_arity(template_tex)
-    if not arity:
+    known_macros = collect_defined_macros(template_tex, template_id)
+    if not arity and not known_macros:
         return tex, []
 
     # Two-argument bullet macros insert ": " themselves, so a label written as
@@ -251,15 +299,20 @@ async def enforce_macro_arity(
         print(f"[LLM_BRAIN] Macro labels: removed {colon_fixes} duplicated colon(s)")
 
     problems = check_macro_calls(tex, arity)
-    structural = check_structural_balance(tex)
-    if not problems and not structural:
+    structural = check_structural_balance(tex) + check_lonely_items(tex, template_tex)
+    undefined = check_undefined_macros(tex, known_macros)
+    if not problems and not structural and not undefined:
         return tex, []
 
     signatures = describe_macro_signatures(arity)
 
+    def _total(*groups) -> int:
+        return sum(len(g) for g in groups)
+
     for attempt in range(1, max_attempts + 1):
         print(
             f"[LLM_BRAIN] Structural check: {len(problems)} bad call(s), "
+            f"{len(undefined)} undefined macro(s), "
             f"{len(structural)} brace/env problem(s) (attempt {attempt}/{max_attempts})"
         )
         for p in problems[:5]:
@@ -267,6 +320,8 @@ async def enforce_macro_arity(
                 f"[LLM_BRAIN]   line {p['line']}: \\{p['macro']} "
                 f"needs {p['expected']}, got {p['found']}"
             )
+        for u in undefined[:5]:
+            print(f"[LLM_BRAIN]   line {u['line']}: \\{u['macro']} is not defined by this template")
         for s in structural[:5]:
             print(f"[LLM_BRAIN]   line {s['line']}: {s['detail']}")
 
@@ -275,7 +330,8 @@ async def enforce_macro_arity(
             detail += ("\n" if detail else "") + format_structural_problems(structural)
 
         repair_prompt = build_macro_arity_repair_prompt(
-            template_tex, tex, detail, signatures
+            template_tex, tex, detail, signatures,
+            undefined_text=format_undefined_problems(undefined),
         )
         system_prompt = build_system_prompt(
             template_id=template_id,
@@ -289,16 +345,23 @@ async def enforce_macro_arity(
             print("[LLM_BRAIN] Macro arity repair returned no valid LaTeX — stopping")
             break
 
-        candidate = _finalize(repaired, template_tex)
+        candidate = _finalize(repaired, template_tex, template_id)
         remaining = check_macro_calls(candidate, arity)
-        remaining_struct = check_structural_balance(candidate)
-        if len(remaining) + len(remaining_struct) < len(problems) + len(structural):
-            tex, problems, structural = candidate, remaining, remaining_struct
-        if not problems and not structural:
+        remaining_struct = (
+            check_structural_balance(candidate)
+            + check_lonely_items(candidate, template_tex)
+        )
+        remaining_undef = check_undefined_macros(candidate, known_macros)
+        if _total(remaining, remaining_struct, remaining_undef) < _total(
+            problems, structural, undefined
+        ):
+            tex = candidate
+            problems, structural, undefined = remaining, remaining_struct, remaining_undef
+        if not problems and not structural and not undefined:
             print("[LLM_BRAIN] Structural check: document is clean")
             return tex, []
 
-    return tex, problems + structural
+    return tex, problems + undefined + structural
 
 
 async def run_structure_review(
@@ -366,7 +429,7 @@ async def apply_structure_repair(
     if not _has_valid_tex(repaired):
         print("[LLM_BRAIN] Structure repair returned no valid LaTeX — keeping original")
         return None
-    return _finalize(repaired, template_tex)
+    return _finalize(repaired, template_tex, template_id)
 
 
 async def fit_to_page_target(
@@ -389,6 +452,7 @@ async def fit_to_page_target(
     """
     warnings: List[str] = []
     template_arity = extract_macro_arity(template_tex)
+    template_known_macros = collect_defined_macros(template_tex, template_id)
     target = None if target_pages in ("auto", None) else float(target_pages)
     max_attempts = int(config.get("PAGE_FIT_MAX_ATTEMPTS", 3))
     timeout = float(config.get("PAGE_FIT_COMPILE_TIMEOUT", 120))
@@ -466,7 +530,7 @@ async def fit_to_page_target(
             warnings.append("page fitting stopped: adjustment produced invalid LaTeX")
             break
 
-        candidate = _finalize(adjusted, template_tex)
+        candidate = _finalize(adjusted, template_tex, template_id)
 
         # A page-fit pass rewrites the WHOLE document, so it can reintroduce a
         # wrong-arity macro call that the step-8b gate already fixed — which is
@@ -474,8 +538,10 @@ async def fit_to_page_target(
         # arity gate was added. Re-check, repair, and refuse the adjustment
         # outright if it is still broken: a correctly-sized document that does
         # not compile is worth less than a slightly mis-sized one that does.
-        if template_arity:
+        if template_arity or template_known_macros:
             bad = check_macro_calls(candidate, template_arity)
+            bad += check_undefined_macros(candidate, template_known_macros)
+            bad += check_lonely_items(candidate, template_tex)
             if bad:
                 print(
                     f"[LLM_BRAIN] Page fit: adjustment introduced {len(bad)} bad macro "
@@ -644,10 +710,7 @@ async def generate_cv(
     if arity_problems:
         warnings.append(
             f"{len(arity_problems)} structural problem(s) remain and will likely fail to compile: "
-            + "; ".join(
-                f"\\{p['macro']} (line {p['line']}) needs {p['expected']}, got {p['found']}"
-                for p in arity_problems[:5]
-            )
+            + "; ".join(_describe_problem(p) for p in arity_problems[:5])
         )
 
     # ── Step 9: LLM structure review against the template ─────────────────
@@ -706,16 +769,19 @@ async def generate_cv(
     )
     if final_arity_problems:
         warnings.append(
-            f"{len(final_arity_problems)} macro call(s) still have the wrong argument "
-            "count after refinement and will likely fail to compile: "
-            + "; ".join(
-                f"\\{p['macro']} (line {p['line']}) needs {p['expected']}, got {p['found']}"
-                for p in final_arity_problems[:5]
-            )
+            f"{len(final_arity_problems)} structural problem(s) survived refinement "
+            "and will likely fail to compile: "
+            + "; ".join(_describe_problem(p) for p in final_arity_problems[:5])
         )
     elif arity_problems:
-        # 8b couldn't fix it but a later pass happened to.
-        warnings = [w for w in warnings if "wrong argument count" not in w]
+        # 8b couldn't fix it but a later pass happened to — retract 8b's
+        # warning rather than telling the user about a problem that is gone.
+        # (This used to match on "wrong argument count", a phrase step 8b never
+        # emits, so the stale warning was never actually retracted.)
+        warnings = [
+            w for w in warnings
+            if "structural problem(s) remain and will likely fail to compile" not in w
+        ]
 
     # ── Logging ───────────────────────────────────────────────────────────
     lines = edited_tex.split('\n')

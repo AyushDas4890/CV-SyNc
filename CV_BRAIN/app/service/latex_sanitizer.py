@@ -105,6 +105,23 @@ _URL_COMMANDS = {"href", "url", "hyperref", "nolinkurl"}
 _CMD_RE = re.compile(r"\\([A-Za-z@]+)\*?")
 
 
+def _first_uncommented(text: str, needle: str) -> int:
+    """
+    Index of the first occurrence of `needle` that is not inside a comment.
+
+    A `%` earlier on the same line comments out the rest of it, unless that `%`
+    is itself escaped as `\\%`.
+    """
+    pos = text.find(needle)
+    while pos >= 0:
+        line_start = text.rfind("\n", 0, pos) + 1
+        prefix = text[line_start:pos]
+        if not re.search(r"(?<!\\)%", prefix):
+            return pos
+        pos = text.find(needle, pos + 1)
+    return -1
+
+
 def _brace_group_end(text: str, i: int) -> int:
     """Index just past the {...} group starting at i, or i if none."""
     if i >= len(text) or text[i] != "{":
@@ -122,6 +139,62 @@ def _brace_group_end(text: str, i: int) -> int:
                 return i + 1
         i += 1
     return i
+
+
+def strip_hyperlinks(tex: str) -> str:
+    """
+    Rewrite \\href{url}{label} → label and \\url{u} → u for templates that never
+    load hyperref.
+
+    Motivating failure (2026-07-30): the dphang template's preamble loads
+    geometry, lato, fontawesome5 and enumitem — but NOT hyperref. The system
+    prompt's hyperlink rule and the registry's own header pattern both told the
+    LLM to write \\href{...}{...}, so every dphang generation died with
+
+        ./doc.tex:52: Undefined control sequence.
+
+    Prompting alone can't be trusted with this: the preamble is restored from
+    the original template after generation, so the model cannot fix it by
+    adding \\usepackage{hyperref} either. Stripping the links deterministically
+    is the only reliable repair, and it costs nothing on a printed CV — the
+    label text survives, only the clickable layer is dropped.
+
+    Underscores in a URL are raw for hyperref's benefit; once the URL becomes
+    body text they must be escaped or they'd be read as subscripts.
+    """
+    out = []
+    i = 0
+    while i < len(tex):
+        m = _CMD_RE.match(tex, i)
+        if not m or m.group(1) not in ("href", "url", "nolinkurl"):
+            out.append(tex[i])
+            i += 1
+            continue
+
+        name = m.group(1)
+        j = m.end()
+        first_end = _brace_group_end(tex, j)
+        if first_end == j:  # not actually a call with arguments — leave it
+            out.append(tex[i:j])
+            i = j
+            continue
+        first = tex[j + 1 : first_end - 1]
+
+        if name == "href":
+            second_end = _brace_group_end(tex, first_end)
+            if second_end == first_end:
+                # \href with only one group — keep the URL as visible text.
+                out.append(escape_latex(first))
+                i = first_end
+            else:
+                # Keep the human-readable label; the URL layer is what breaks.
+                out.append(tex[first_end + 1 : second_end - 1])
+                i = second_end
+        else:
+            out.append(escape_latex(first))
+            i = first_end
+
+    return "".join(out)
 
 
 def escape_body_specials(tex: str) -> str:
@@ -237,8 +310,15 @@ def sanitize_generated_tex(tex: str) -> str:
     tex = re.sub(r"\n```$", "", tex.strip(), flags=re.MULTILINE)
     tex = tex.strip()
 
-    # 1b. Strip any natural language text before the actual LaTeX content
-    doc_class_idx = tex.find(r'\documentclass')
+    # 1b. Strip any natural language text before the actual LaTeX content.
+    # The \documentclass we cut at must be a REAL one, not a commented-out
+    # alternative. AltaCV's sample opens with
+    #     % \documentclass[10pt,a4paper,withhyper,normalphoto]{altacv}
+    #     \documentclass[10pt,a4paper,withhyper]{altacv}
+    # and cutting at the first match sliced away the leading "% ", leaving two
+    # live \documentclass lines and "LaTeX Error: Two \documentclass or
+    # \documentstyle commands." Only the later preamble swap was hiding it.
+    doc_class_idx = _first_uncommented(tex, r'\documentclass')
     if doc_class_idx >= 0:
         tex = tex[doc_class_idx:]
     else:

@@ -3,7 +3,60 @@ System prompt builder — generates a template-aware, completeness-enforced
 system prompt for the LLM based on the selected template and user data context.
 """
 
-from app.prompts.template_registry import get_template_context
+from app.prompts.template_registry import get_template_context, get_template_metadata
+
+
+def _hyperlink_rule(template_id: str) -> str:
+    """
+    Render the HYPERLINKS rule for this template.
+
+    Not every template loads hyperref. dphang does not, so \\href there is a
+    fatal "Undefined control sequence" — and because the preamble is restored
+    from the original template before compiling, the model cannot fix it by
+    adding \\usepackage{hyperref} either. The rule has to change, not the
+    document.
+    """
+    meta = get_template_metadata(template_id) or {}
+    if meta.get("supports_hyperlinks", True):
+        return (
+            "For project GitHub links, use \\\\href{{URL}}{{\\\\underline{{GitHub}}}} "
+            "where URL contains raw underscores (NOT \\\\_ or %5F). hyperref "
+            "handles underscores in URLs natively."
+        )
+    return (
+        "**THIS TEMPLATE HAS NO HYPERREF.** \\\\href, \\\\url and \\\\nolinkurl are "
+        "UNDEFINED here and each one is a FATAL compile error. Write every link "
+        "as plain visible text instead — `github.com/user/repo`, "
+        "`linkedin.com/in/id`, the bare email address. Do NOT add "
+        "\\\\usepackage{{hyperref}} to fix this: the preamble is replaced with the "
+        "template's original before compiling, so your addition is discarded and "
+        "only the broken \\\\href calls remain."
+    )
+
+
+def _tech_stack_rule() -> str:
+    """
+    Render the tech-stack bullet rule without naming a macro that may not exist.
+
+    This rule used to spell its example with \\resumeItem, which is defined ONLY
+    in Jake's and Anubhav's templates. Generating with AltaCV or PlushCV copied
+    the example literally and died with "Undefined control sequence" — the
+    prompt itself was the bug. The example is now written against whatever
+    bullet macro this template actually has.
+    """
+    return (
+        "Write it using **this template's own bullet macro**, taken from the "
+        "AVAILABLE MACROS list and the EXACT MACRO SIGNATURES block — never a "
+        "bullet macro borrowed from a different template.\n"
+        "    - if this template's bullet is plain \\\\item → "
+        "\\\\item \\\\textbf{{Tech Stack:}} React, Node.js, MongoDB, Docker\n"
+        "    - if it is a ONE-argument macro (e.g. \\\\somebullet{{...}}) → "
+        "\\\\somebullet{{\\\\textbf{{Tech Stack:}} React, Node.js, MongoDB, Docker}}\n"
+        "    - if it is a TWO-argument macro (e.g. \\\\somebullet{{...}}{{...}}) → "
+        "\\\\somebullet{{Tech Stack}}{{React, Node.js, MongoDB, Docker}}\n"
+        "    Substitute the real macro name from THIS template. Never omit a "
+        "mandatory argument to fit the pattern."
+    )
 
 
 def _page_budget_text(target_pages) -> str:
@@ -95,6 +148,7 @@ ABSOLUTE STRUCTURAL RULES
 1. **PRESERVE TEMPLATE STRUCTURE EXACTLY**: Keep every \\documentclass, \\usepackage, \\newcommand, \\renewcommand, \\pagestyle, margin setting, and macro definition UNCHANGED. Only modify the content inside \\begin{{document}}...\\end{{document}}.
 
 2. **USE ONLY MACROS DEFINED IN THE TEMPLATE**: See the AVAILABLE MACROS list above. NEVER invent new macros, rename existing ones, or use macros from a different template. Every macro call MUST supply exactly the number of mandatory arguments that macro is defined with — no more, no fewer.
+   Resume macro names are NOT portable between templates. \\resumeItem, \\resumeSubheading and \\resumeProjectHeading exist ONLY in Jake's and Anubhav's templates; \\cventry, \\cvitem, \\cvevent, \\runsubsection, \\headerrow and the rest are each specific to their own template. Calling one that this template does not define is an immediate fatal "Undefined control sequence". If a rule below shows an example macro name that is not in THIS template's macro list, substitute this template's equivalent — follow the rule's intent, never its literal macro name.
 
 3. **HEADER**: Replace the name, phone, email, linkedin, github in the header using the EXACT header pattern shown above. Keep the same structure — only change the data values.
 
@@ -107,9 +161,11 @@ ABSOLUTE STRUCTURAL RULES
    - If user provided Certifications, add them in a relevant section.
    - If user provided Achievements/Honors, add them in a relevant section (use the template's Honors/Awards section if it has one; otherwise fold them into Achievements or a Certifications-and-Achievements block). Do not invent an achievement's wording — use what was provided, only rephrasing for ATS tone.
 
-6. **HYPERLINKS**: For project GitHub links, use \\href{{URL}}{{\\underline{{GitHub}}}} where URL contains raw underscores (NOT \\_ or %5F). hyperref handles underscores in URLs natively.
+6. **HYPERLINKS**: {_hyperlink_rule(template_id)}
 
 7. **NO EMPTY ENVIRONMENTS**: Never output a list/section environment (ListStart...ListEnd, begin...end) without items inside. Delete empty sections entirely.
+
+7a. **BULLETS MUST LIVE INSIDE A LIST**: \\item — and every template macro that expands to one (\\resumeItem, \\resumeSubheading, \\resumeItemWithoutTitle, \\cvitem-style bullets) — is only legal inside an open list. Always wrap them in this template's list pair (\\resumeItemListStart…\\resumeItemListEnd, \\resumeSubHeadingListStart…\\resumeSubHeadingListEnd, \\begin{{itemize}}…\\end{{itemize}}, \\begin{{tightemize}}…\\end{{tightemize}}, whichever this template provides). A bullet emitted straight under a \\section with no list around it is the fatal error "Lonely \\item--perhaps a missing list environment". For a one-line Summary section, write plain text, NOT a bullet macro.
 
 8. **NO TRAILING BACKSLASHES**: Never put \\\\ after the last item in a skills list or after a subheading call.
 
@@ -127,16 +183,14 @@ COMPLETENESS RULES — CRITICAL (READ CAREFULLY)
 
 11. **BULLET POINT DENSITY**: Use 3-4 bullet points per experience/project entry. Each bullet point should describe a concrete achievement, technology used, or impact. Single-word or single-phrase bullets are NOT acceptable.
 
-11a. **PROJECT BULLET MINIMUM (STRICT, NON-NEGOTIABLE)**: Every single project entry MUST have AT LEAST 3 separate bullet points (using the template's bullet macro, e.g. \\resumeItem{{...}}, \\item{{...}}, \\cvitem{{...}}). A project with only 1 or 2 bullets is a VALIDATION FAILURE. Each bullet must be a full sentence/clause (1-2 lines), describing a distinct aspect: what the project does, a specific feature or architectural detail, and a measurable outcome/impact/scale. Never collapse a project down to a single one-line summary.
+11a. **PROJECT BULLET MINIMUM (STRICT, NON-NEGOTIABLE)**: Every single project entry MUST have AT LEAST 3 separate bullet points, using whichever bullet macro THIS template provides (see AVAILABLE MACROS — it may be plain \\item, or a template-specific macro). A project with only 1 or 2 bullets is a VALIDATION FAILURE. Each bullet must be a full sentence/clause (1-2 lines), describing a distinct aspect: what the project does, a specific feature or architectural detail, and a measurable outcome/impact/scale. Never collapse a project down to a single one-line summary.
+    EXCEPTION — TEMPLATE WINS: if this template's TEMPLATE NOTES say its Projects section is built from a single entry macro rather than a per-project bullet list, follow the template's pattern instead of this rule. Put the same substance (what it does, a key technical detail, the impact, the tech stack) into that entry's description text as full sentences. Never bend a macro to fit this rule — supplying the wrong number of arguments is a fatal compile error, and this rule is not worth breaking the build for.
 
-11b. **TECH STACK ON ITS OWN LINE (REQUIRED)**: In addition to the 3+ description bullets above, every project entry MUST include ONE dedicated bullet, placed FIRST in that project's bullet list, stating the tech stack ONLY. Write it using this template's bullet macro **with that macro's exact argument count** (see the authoritative signature list):
-    - bullet macro taking ONE argument → \\resumeItem{{\\textbf{{Tech Stack:}} React, Node.js, MongoDB, Docker}}
-    - bullet macro taking TWO arguments → \\resumeItem{{Tech Stack}}{{React, Node.js, MongoDB, Docker}}
-    Never omit a mandatory argument to fit this pattern.
+11b. **TECH STACK ON ITS OWN LINE (REQUIRED)**: In addition to the 3+ description bullets above, every project entry MUST include ONE dedicated bullet, placed FIRST in that project's bullet list, stating the tech stack ONLY. This applies only where the template gives each project a bullet list; where the TEMPLATE NOTES specify a single-entry project macro instead, name the tech stack inside that entry (e.g. in the heading argument, or as "Tech: ..." at the end of the description) and emit no extra bullet. {_tech_stack_rule()}
     IMPORTANT: with a two-argument bullet macro, do NOT put a colon at the end of the
-    label. Those macros already insert ": " between the two arguments, so
-    \\resumeItem{{Tech Stack:}}{{...}} renders as "Tech Stack:: ..." with a doubled colon.
-    Write \\resumeItem{{Tech Stack}}{{...}}. The same applies to every other labelled
+    label. Those macros already insert ": " between the two arguments, so a label
+    written as "Tech Stack:" renders as "Tech Stack:: ..." with a doubled colon.
+    Write the label without the colon. The same applies to every other labelled
     bullet (Project Overview, Objective, and so on). This tech-stack line is separate from — and in addition to — the 3+ substantive description bullets; it does not count toward the minimum of 3. So every project entry has 4+ bullets total: 1 tech-stack line + 3+ description bullets. Still also put the tech stack in the project heading (Rule 14) where the template supports it — the dedicated bullet line is required regardless.
 
 12. **SECTION ORDER & BALANCE**: Arrange sections to fill the page naturally. Do not cluster all content at the top with empty space at the bottom. Use the RECOMMENDED SECTION ORDER from the template rules above.
@@ -158,4 +212,6 @@ ZERO HALLUCINATION
 
 16. **OUTPUT FORMAT**: Return ONLY raw LaTeX starting with % or \\documentclass. NO markdown code blocks (```), NO explanatory text before or after the LaTeX.
 
-17. **NO PLACEHOLDER ECHO (CRITICAL)**: The template contains sample details (e.g. 'Jake Ryan', 'Southwestern University', 'Gitlytics', 'Simple Paintball', 'Sourabh Bajaj', 'Danny Phang', 'Zachary Deedy'). You MUST replace ALL of these with the real candidate details. If any placeholder from the original template remains in your output, it is a critical failure."""
+17. **NO PLACEHOLDER ECHO (CRITICAL)**: The template contains sample details (e.g. 'Jake Ryan', 'Southwestern University', 'Gitlytics', 'Simple Paintball', 'Sourabh Bajaj', 'Danny Phang', 'Zachary Deedy'). You MUST replace ALL of these with the real candidate details. If any placeholder from the original template remains in your output, it is a critical failure.
+
+18. **DELETE PLACEHOLDER SECTIONS — NEVER FILL THEM (CRITICAL)**: Templates ship with demo sections the candidate has no data for — Languages, Interests, Hobbies, References, Publications, 'Extra 1/2/3', 'A Day of My Life', and in some templates an entire cover letter after \\clearpage. If the user data contains nothing for such a section, DELETE the section wholesale, heading and all. Do NOT keep the heading, and above all do NOT invent contents for it. Writing 'Languages: English (Fluent), Hindi (Fluent)' or 'Interests: Hiking, Reading' when the user supplied neither is a fabrication and a critical failure, and it also pushes the resume past its page target. An absent section is correct; an invented one is not."""

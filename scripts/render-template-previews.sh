@@ -21,9 +21,7 @@ TEMPLATES=(
   "anubhav:pdflatex:main.tex"
   "altacv:pdflatex:sample.tex"
   "moderncv:pdflatex:template.tex"
-  "plushcv:xelatex:PlushCV.tex"
   "deedy:xelatex:deedy_resume-openfont.tex"
-  "awesome-cv:xelatex:resume.tex"
 )
 
 MANIFEST_ENTRIES=()

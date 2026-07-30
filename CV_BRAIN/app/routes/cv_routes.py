@@ -30,11 +30,14 @@ def health():
     return {
         "ok": True,
         "service": "LLM Brain",
-        "build": "2026-07-29-structural-gate-v3",
+        "build": "2026-07-30-undefined-macro-gate-v6",
         "features": {
             "macro_arity_gate": True,
             "macro_arity_final_gate": True,
             "brace_env_balance_check": True,
+            "undefined_macro_gate": True,
+            "lonely_item_gate": True,
+            "hyperlink_capability_strip": True,
             "structure_review": bool(cfg.get("ENABLE_STRUCTURE_REVIEW")),
             "page_fit": bool(cfg.get("ENABLE_PAGE_FIT")),
             "page_bands": list(ALLOWED_LENGTHS),

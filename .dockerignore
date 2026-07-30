@@ -1,0 +1,44 @@
+# Root build-context excludes.
+#
+# Each service builds from its own subdirectory context (./CV_BRAIN,
+# ./frontend, ...) and has its own .dockerignore. This file covers any build
+# run from the repo root and keeps stray host files out of every context.
+
+# Secrets — must never be baked into an image.
+.env
+.env.*
+!.env.example
+!.env.release.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies and build output — reinstalled/rebuilt inside the image.
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc
+
+# VCS and editor noise
+.git
+.gitignore
+.gitattributes
+**/.DS_Store
+.vscode
+.idea
+.claude
+
+# Docs, KB and design assets — not needed at runtime.
+kb/
+docs/
+*.md
+!README.md
+*.excalidraw
+*.zip
+
+# Local-only scratch
+mock-cv-builder/
+scripts/
+**/*.log
+**/tmp/

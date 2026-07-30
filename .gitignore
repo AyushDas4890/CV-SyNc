@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# Template for running the release stack outside the project — no real values.
+!.env.release.example
 
 # Dependencies
 node_modules/

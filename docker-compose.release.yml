@@ -1,10 +1,28 @@
-# Local / default stack. For production, layer the override on top:
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# CV-Sync — release stack. Runs entirely from pre-built images.
+#
+# This file has NO build: sections and NO bind mounts, so it does not need the
+# project source tree to exist. Copy this single file (plus an env file) any-
+# where on any machine that has the images, and `docker compose up -d` works.
+#
+#   docker compose -f docker-compose.release.yml --env-file cvsync.env up -d
+#
+# Build the images first, from the project, with:
+#   docker compose build
+# Or load them from a tarball on a machine that never had the source:
+#   docker load -i cvsync-images.tar
+#
+# NOTE ON THE FRONTEND: Vite inlines VITE_* at BUILD time, so the frontend's
+# API URLs are already baked into its image and CANNOT be changed here. If you
+# need to point the UI at different hosts, rebuild the frontend image with new
+# build args (see DOCKER.md). Every other setting below is a true runtime env
+# var and is safe to change here.
+
 services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
+      # The one thing that genuinely needs to persist: session storage.
       - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -14,13 +32,11 @@ services:
 
   cv-builder:
     image: cvsync/cv-builder:${CVSYNC_TAG:-latest}
-    build:
-      context: ./cv_builder_src
     ports:
-      - "3000:3000"
+      - "${CV_BUILDER_PORT:-3000}:3000"
     environment:
       PORT: 3000
-      logger_level: info
+      logger_level: ${LOGGER_LEVEL:-info}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
@@ -31,23 +47,21 @@ services:
 
   cv-brain:
     image: cvsync/cv-brain:${CVSYNC_TAG:-latest}
-    build:
-      context: ./CV_BRAIN
     ports:
-      - "8000:8000"
+      - "${CV_BRAIN_PORT:-8000}:8000"
     environment:
       PORT: 8000
+      # Secrets come from the --env-file / the host environment. They are never
+      # baked into the image; an unset key simply arrives empty.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
       GROQ_TEMPERATURE: ${GROQ_TEMPERATURE:-0.1}
       GROQ_MAX_TOKENS: ${GROQ_MAX_TOKENS:-8192}
       CV_BUILDER_URL: http://cv-builder:3000
-      # CORS allowlist — /api/generate-cv spends LLM credits, so it must not
-      # be callable from arbitrary origins.
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      # /api/generate-cv spends LLM credits — never widen this to "*".
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
-      # Finished CV length: whole pages only by default.
       PAGE_LENGTH_BANDS: ${PAGE_LENGTH_BANDS:-1,2}
       ENABLE_PAGE_FIT: ${ENABLE_PAGE_FIT:-true}
       PAGE_FIT_MAX_ATTEMPTS: ${PAGE_FIT_MAX_ATTEMPTS:-3}
@@ -65,18 +79,15 @@ services:
 
   auth-service:
     image: cvsync/auth-service:${CVSYNC_TAG:-latest}
-    build:
-      context: ./backend/auth-service
     ports:
-      - "4000:4000"
+      - "${AUTH_PORT:-4000}:4000"
     environment:
       PORT: 4000
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost:4000/api/auth/github/callback}
-      # read:user is enough to identify the user and list public repos.
-      # public_repo is a WRITE scope — it grants push access to every public
-      # repo the user owns, which this app never needs.
+      # read:user identifies the user and lists public repos. public_repo is a
+      # WRITE scope this app never needs.
       GITHUB_OAUTH_SCOPE: ${GITHUB_OAUTH_SCOPE:-read:user}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -85,6 +96,8 @@ services:
       USE_REDIS: "true"
       REDIS_URL: redis://redis:6379
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
+      NODE_ENV: ${NODE_ENV:-development}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
     depends_on:
       redis:
         condition: service_healthy
@@ -98,16 +111,8 @@ services:
 
   frontend:
     image: cvsync/frontend:${CVSYNC_TAG:-latest}
-    build:
-      context: ./frontend
-      # Vite bakes VITE_* into the bundle at build time, so these have to be
-      # build args. Passing them as `environment:` does nothing.
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:4000}
-        VITE_LLM_BRAIN_URL: ${VITE_LLM_BRAIN_URL:-http://localhost:8000}
-        VITE_CV_BUILDER_URL: ${VITE_CV_BUILDER_URL:-http://localhost:3000}
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
       auth-service:
         condition: service_healthy

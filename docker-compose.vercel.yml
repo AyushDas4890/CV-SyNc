@@ -1,0 +1,87 @@
+# Overlay: frontend on Vercel, everything else on this PC.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.vercel.yml \
+#     --env-file vercel.env up -d
+#
+# What this adds on top of docker-compose.yml:
+#   router   — Caddy on :8080, splits one hostname across the three services
+#   tunnel   — cloudflared quick tunnel, gives that router a public HTTPS URL
+# and it drops the local `frontend` container, because Vercel serves the UI now.
+#
+# Read deploy/vercel/README.md first — several values below have to match a
+# Vercel env var or a GitHub OAuth App setting exactly, and a mismatch shows up
+# as a login that dies on redirect rather than as an error you can read.
+
+services:
+  # Vercel serves the UI, so the local copy is dead weight. A profile no one
+  # activates is how compose says "defined but do not start"; `docker compose
+  # --profile local-ui up frontend` still brings it back for offline testing.
+  frontend:
+    profiles: ["local-ui"]
+
+  router:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/vercel/Caddyfile:/etc/caddy/Caddyfile:ro
+    # Published so you can curl it directly while debugging. The tunnel reaches
+    # it over the Docker network and does not need this.
+    ports:
+      - "8080:8080"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      cv-brain:
+        condition: service_healthy
+      cv-builder:
+        condition: service_healthy
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # A quick tunnel needs no account and no config, and prints a fresh
+    # https://<random>.trycloudflare.com on startup. That URL changes every
+    # time this container restarts — scripts/vercel-sync.sh reads the new one
+    # out of these logs and pushes it to Vercel, so treat the URL as derived
+    # state, never something to copy by hand.
+    command: tunnel --no-autoupdate --url http://router:8080
+    depends_on:
+      - router
+
+  auth-service:
+    environment:
+      # Turns on `secure` session cookies. Correct here: the browser really is
+      # on HTTPS (Vercel), and deploy/vercel/Caddyfile forces the
+      # X-Forwarded-Proto header express-session checks before issuing them.
+      NODE_ENV: production
+      # Where auth-service sends the browser after a successful login, and the
+      # single origin its CORS allows. Must be the Vercel URL.
+      FRONTEND_URL: "${PUBLIC_APP_URL:?set PUBLIC_APP_URL in vercel.env}"
+      # Points at Vercel, NOT at the tunnel. This is the reason auth is proxied
+      # through Vercel at all: the callback URL stays constant while the tunnel
+      # URL rotates, so the GitHub OAuth App is configured once and never again.
+      GITHUB_CALLBACK_URL: ${PUBLIC_APP_URL}/api/auth/github/callback
+      GOOGLE_CALLBACK_URL: ${PUBLIC_APP_URL}/api/auth/google/callback
+      # The browser only ever sees the Vercel origin for these calls, so the
+      # cookie is first-party and lax holds. `none` would work too but is
+      # weaker and some privacy settings drop it.
+      COOKIE_SAMESITE: lax
+      # NODE_ENV=production makes auth-service refuse to boot on the dev
+      # placeholder secret. Generate with: openssl rand -hex 32
+      SESSION_SECRET: "${SESSION_SECRET:?generate one with openssl rand -hex 32}"
+
+  cv-brain:
+    environment:
+      # The browser calls cv-brain directly at the tunnel origin, so CORS has
+      # to name the Vercel page that makes the call. /api/generate-cv spends
+      # real LLM credits, which is why this is an allowlist and not "*".
+      ALLOWED_ORIGINS: ${PUBLIC_APP_URL}
+      FRONTEND_URL: ${PUBLIC_APP_URL}
+      # Cloudflare kills any request over 100 s on the free plan, and kb/09
+      # measured /api/generate-cv at 55-95 s with page fitting on — inside the
+      # limit on a good run, over it on a slow one. That failure is the bad
+      # kind: the CV generates, the credits are spent, and the user still sees
+      # an error because the proxy hung up first. Off, generation lands around
+      # 30-45 s with margin to spare. The cost is that page fitting no longer
+      # holds the CV to a whole page count.
+      ENABLE_PAGE_FIT: "false"

@@ -441,28 +441,39 @@ button.ghost:hover { color: var(--text-body); }
 .template-track {
   flex: 1;
   display: flex;
+  align-items: stretch;            /* equal card heights regardless of label length */
+  /* `safe` keeps the row centred while it fits, and falls back to start-aligned
+     (nothing clipped past the left edge) once the cards overflow */
+  justify-content: safe center;
   gap: 20px;
   overflow-x: auto;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
   padding: 12px 32px 16px;
   cursor: grab;
-  /* Fade both edges */
+  /* Edge fades — only switched on for the side that can actually scroll,
+     otherwise the mask washes out the first/last card for no reason.
+     .fade-left / .fade-right are toggled from TemplatePage's arrow state. */
+  --fade-l: 0%;
+  --fade-r: 100%;
   mask-image: linear-gradient(
     to right,
     transparent 0%,
-    black 6%,
-    black 94%,
+    black var(--fade-l),
+    black var(--fade-r),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0%,
-    black 6%,
-    black 94%,
+    black var(--fade-l),
+    black var(--fade-r),
     transparent 100%
   );
 }
+
+.template-track.fade-left  { --fade-l: 6%; }
+.template-track.fade-right { --fade-r: 94%; }
 
 .template-track:active { cursor: grabbing; }
 
@@ -516,7 +527,9 @@ button.ghost:hover { color: var(--text-body); }
 .template-card {
   position: relative;
   flex: 0 0 210px;
-  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: center;
   border: 1.5px solid var(--navy-border);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -559,6 +572,7 @@ button.ghost:hover { color: var(--text-body); }
 }
 
 .template-card .label {
+  margin-top: auto;              /* labels line up across cards */
   padding: 10px 12px;
   font-size: 13px;
   font-weight: 600;

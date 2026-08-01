@@ -23,7 +23,8 @@ export function shortIdFor(brainId) {
   return TEMPLATES.find((t) => t.brainId === brainId)?.id ?? null;
 }
 
-const CARD_WIDTH  = 220; // px — card width
+// Keep in sync with .template-card / .template-track in styles.css
+const CARD_WIDTH  = 210; // px — card width
 const CARD_GAP    = 20;  // px — gap between cards
 const SCROLL_STEP = CARD_WIDTH + CARD_GAP;
 
@@ -33,7 +34,7 @@ export default function TemplatePage() {
   const [username, setUsername]       = useState("");
   const [pageCounts, setPageCounts]   = useState({});
   const [canLeft, setCanLeft]         = useState(false);
-  const [canRight, setCanRight]       = useState(true);
+  const [canRight, setCanRight]       = useState(false);
   const [generating, setGenerating]   = useState(false);
   const [genError, setGenError]       = useState("");
   const navigate = useNavigate();
@@ -55,13 +56,28 @@ export default function TemplatePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep arrow enable/disable in sync with scroll position
+  // Keep arrow enable/disable (and the track's edge fades) in sync with scroll
+  // position. Also runs on mount/resize — when every card fits, both arrows are
+  // disabled and neither fade is applied, so no card gets masked for no reason.
   function updateArrows() {
     const el = scrollRef.current;
     if (!el) return;
     setCanLeft(el.scrollLeft > 4);
     setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
   }
+
+  useEffect(() => {
+    updateArrows();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateArrows);
+      return () => window.removeEventListener("resize", updateArrows);
+    }
+    const ro = new ResizeObserver(updateArrows);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function scrollBy(dir) {
     scrollRef.current?.scrollBy({ left: dir * SCROLL_STEP, behavior: "smooth" });
@@ -156,7 +172,7 @@ export default function TemplatePage() {
 
         {/* Scrollable track */}
         <div
-          className="template-track"
+          className={`template-track${canLeft ? " fade-left" : ""}${canRight ? " fade-right" : ""}`}
           ref={scrollRef}
           onScroll={updateArrows}
           onMouseDown={onMouseDown}

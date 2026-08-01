@@ -1,0 +1,51 @@
+# Path router for the "frontend on Vercel, backends on this PC" setup.
+#
+# One Cloudflare quick tunnel can only point at ONE port, but the browser needs
+# three services. So this fronts all three on :8080 and splits by path, and the
+# tunnel points here. One tunnel, one URL to keep in sync instead of three.
+#
+# No TLS here on purpose: cloudflared terminates HTTPS at Cloudflare's edge and
+# speaks plain HTTP to this hop, which never leaves the Docker network.
+
+:8080 {
+	encode gzip zstd
+
+	# ── CV_BUILDER — LaTeX compile ──────────────────────────────────────
+	# Browser calls this directly (bypassing Vercel) because a compile can
+	# outlast Vercel's proxy window. cv-builder sends CORS: * and the call
+	# carries no cookie, so a cross-origin call from *.vercel.app is fine.
+	handle /api/compile* {
+		reverse_proxy cv-builder:3000
+	}
+
+	# ── CV_BRAIN — LLM generation ───────────────────────────────────────
+	# NOTE /api/templates is served by BOTH cv-brain and cv-builder. The
+	# frontend's listCvTemplates() wants cv-brain's (it returns brainId
+	# values that /api/generate-cv accepts), so it is pinned here. Nothing
+	# in the browser needs cv-builder's copy — cv-brain reaches that one
+	# over the internal Docker network, never through this router.
+	handle /api/templates* {
+		reverse_proxy cv-brain:8000
+	}
+	handle /api/generate-cv* {
+		reverse_proxy cv-brain:8000
+	}
+
+	# ── auth-service — OAuth + session cookie ───────────────────────────
+	# Everything else. Reached through a Vercel rewrite, so as far as the
+	# browser is concerned this is same-origin and the cookie is first-party.
+	#
+	# X-Forwarded-Proto is forced to https because of a real failure mode:
+	# auth-service sets `secure: true` on the session cookie in production
+	# and express-session only honours that when req.secure is true, which
+	# needs this header to say https. This hop is plain HTTP, so Caddy would
+	# otherwise send "http", express would refuse to issue the cookie, and
+	# login would appear to succeed and then instantly log you back out.
+	# The request really did arrive over HTTPS (browser -> Vercel -> tunnel);
+	# only the last internal hop is plain, so https is the honest value.
+	handle {
+		reverse_proxy auth-service:4000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+}

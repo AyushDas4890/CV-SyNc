@@ -4,6 +4,13 @@
 !.env.example
 # Template for running the release stack outside the project — no real values.
 !.env.release.example
+# Real secrets for the Vercel + local-backends setup. The .env.* rule above
+# does not catch this name, so it needs its own line.
+vercel.env
+!vercel.env.example
+
+# Vercel CLI project link (contains project/org ids)
+.vercel/
 
 # Dependencies
 node_modules/

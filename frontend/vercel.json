@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/auth/:path*",
+      "destination": "https://announces-knowledgestorm-louisville-eligibility.trycloudflare.com/api/auth/:path*"
+    },
+    {
+      "source": "/api/profile/:path*",
+      "destination": "https://announces-knowledgestorm-louisville-eligibility.trycloudflare.com/api/profile/:path*"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

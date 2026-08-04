@@ -1,0 +1,32 @@
+# Normalize line endings.
+#
+# Without this, checking the repo out on Windows and touching files with an
+# editor that writes CRLF rewrote every .tex/.cls/.md/licence in the tree,
+# producing diffs of 8000+ changed lines with zero content change and leaving
+# the working tree permanently dirty.
+#
+# text=auto: git stores text files with LF in the repo and converts to the
+# platform's native ending on checkout. Binary files are auto-detected and
+# left alone.
+* text=auto
+
+# Belt-and-braces for the binaries that live here, so they are never
+# line-ending converted even if auto-detection is wrong.
+*.pdf    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.ttf    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+*.eot    binary
+*.zip    binary
+
+# LaTeX sources are text but must keep LF in the repo.
+*.tex    text
+*.cls    text
+*.sty    text
+*.bib    text

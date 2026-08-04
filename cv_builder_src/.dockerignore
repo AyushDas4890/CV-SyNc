@@ -1,0 +1,25 @@
+# CV_BUILDER build context excludes.
+# The Dockerfile copies package*.json and src/ only, but excluding these keeps
+# the context small and guarantees no host secret or artifact can slip in.
+
+node_modules
+.env
+.env.*
+!.env.example
+
+# Runtime log tracked in the repo — not wanted in the image.
+app.log
+*.log
+
+# Compile scratch dirs
+latex-jobs/
+tmp/
+out/
+*.pdf
+*.aux
+*.fls
+*.fdb_latexmk
+
+.git
+.gitignore
+.DS_Store

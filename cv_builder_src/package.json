@@ -1,0 +1,30 @@
+{
+  "name": "cv_builder",
+  "version": "1.0.0",
+  "description": "! after pulling this image , now install what all things are there inside the dockerfile.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "npx nodemon src/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IamAbhinav01/CV_BUILDER.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/IamAbhinav01/CV_BUILDER/issues"
+  },
+  "homepage": "https://github.com/IamAbhinav01/CV_BUILDER#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "nodemon": "^3.1.14",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3"
+  }
+}

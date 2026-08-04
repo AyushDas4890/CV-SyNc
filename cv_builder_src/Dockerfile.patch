@@ -1,0 +1,28 @@
+# Rebuild CV_BUILDER's application code on top of an ALREADY-BUILT image.
+#
+# The normal Dockerfile starts FROM minidocks/texlive:2023-medium, which cannot
+# be pulled on a network where a TLS-inspecting proxy mangles docker.io
+# responses (every tag reports "not found" or a 502). Since only src/ changes,
+# reusing the existing image as the base skips the registry entirely and takes
+# seconds instead of a full TeXLive install.
+#
+# Usage (from cv_builder_src/):
+#   docker build -f Dockerfile.patch -t cvsync-cv-builder:latest .
+#
+# BASE defaults to the previously built compose image; override if yours is
+# named differently:
+#   docker build -f Dockerfile.patch --build-arg BASE=cv-builder:local -t cvsync-cv-builder:latest .
+ARG BASE=cvsync-cv-builder:latest
+FROM ${BASE}
+
+WORKDIR /app
+
+# Only the application code changes; TeXLive, tlmgr packages, fonts and
+# node_modules all come from the base image.
+COPY src ./src
+COPY package*.json ./
+
+EXPOSE 3000
+ENV PORT=3000
+
+CMD ["node", "src/index.js"]
